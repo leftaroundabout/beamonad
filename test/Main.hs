@@ -9,9 +9,17 @@ main :: IO ()
 main = yeamer . Styling ([lucius|
                   body { color: white
                        ; background-color: black } |] ()) $
-   Encaps (\cont -> [hamlet|
-              <h2>
-                 Heading
-              <div>
-                 #{cont}|] ())
-          "Simple test “presentation”"
+   Sequential
+     [ Encaps (\cont -> [hamlet|
+                <h2>
+                   Heading
+                <div>
+                   #{cont}|] ())
+              "Simple test “presentation”"
+     , Encaps (\cont -> [hamlet|
+                <h2>
+                   Another slide
+                <div>
+                   #{cont}|] ())
+              "Still nothing interesting..."
+     ]

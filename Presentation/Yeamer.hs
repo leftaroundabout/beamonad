@@ -25,6 +25,8 @@ import Data.String (IsString (..))
 
 import Text.Cassius (Css)
 
+import Data.Monoid
+
 import GHC.Generics
 
 
@@ -46,9 +48,21 @@ instance YesodJquery Presentation
 getHomeR :: Handler Html
 getHomeR = do
     presentation <- getYesod
-    let contents = go presentation
-    defaultLayout . addStyle presentation $ toWidget contents
- where go (StaticContent conts) = conts
+    slide <- chooseSlide "progress" presentation
+    let contents = go slide
+    defaultLayout . addStyle slide $ toWidget contents
+ where chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
+       chooseSlide path (Styling sty conts) = Styling sty <$> chooseSlide path conts
+       chooseSlide path (Encaps f conts) = Encaps f <$> chooseSlide path conts
+       chooseSlide path (Sequential seq) = do
+          positionCh <- lookupSession path
+          n <- case positionCh of
+            Nothing -> do
+              setSession path "0"
+              return 0
+            Just pos -> return . read $ Txt.unpack pos
+          chooseSlide (path<>"_"<>Txt.pack(show n)) $ seq !! n
+       go (StaticContent conts) = conts
        go (Styling sty conts) = go conts
        go (Encaps f conts) = f $ go conts
        addStyle (Styling sty conts) = (toWidget sty >>) . addStyle conts
