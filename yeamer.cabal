@@ -23,6 +23,7 @@ library
   build-depends:       base >=4.8 && <4.9
                        , yesod >=1.4 && <1.5
                        , yesod-form
+                       , shakespeare
                        , text 
   -- hs-source-dirs:      
   default-language:    Haskell2010
@@ -33,5 +34,6 @@ executable test-presentation
   -- other-extensions:
   build-depends:       base >=4.8 && <4.10
                        , yeamer
+                       , shakespeare
   hs-source-dirs:      test
   default-language:    Haskell2010

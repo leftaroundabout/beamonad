@@ -1,7 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 import Presentation.Yeamer
+import Text.Lucius
 
 main :: IO ()
 main = yeamer $
-   "Simple test “presentation”"
+   Styling
+     ([lucius|body {background-color: black}|] ())
+     "Simple test “presentation”"

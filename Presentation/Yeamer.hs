@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
-module Presentation.Yeamer ( Presentation
+module Presentation.Yeamer ( Presentation(..)
                            , yeamer ) where
 
 import Yesod
@@ -23,11 +23,14 @@ import qualified Data.Text as Txt
 import Data.Text (Text)
 import Data.String (IsString (..))
 
+import Text.Cassius (Css)
+
 import GHC.Generics
 
 
 data Presentation
     = StaticContent Html
+    | Styling Css Presentation
     | Sequential [Presentation]
  deriving (Generic)
 instance IsString Presentation where
@@ -42,6 +45,7 @@ instance YesodJquery Presentation
 getHomeR :: Handler Html
 getHomeR = defaultLayout . go =<< getYesod
  where go (StaticContent conts) = toWidget conts
+       go (Styling sty conts) = toWidget sty >> go conts
 
 yeamer :: Presentation -> IO ()
 yeamer = warp 14910
