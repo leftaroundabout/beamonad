@@ -3,9 +3,15 @@
 
 import Presentation.Yeamer
 import Text.Lucius
+import Text.Hamlet
 
 main :: IO ()
-main = yeamer $
-   Styling
-     ([lucius|body {background-color: black}|] ())
-     "Simple test “presentation”"
+main = yeamer . Styling ([lucius|
+                  body { color: white
+                       ; background-color: black } |] ()) $
+   Encaps (\cont -> [hamlet|
+              <h2>
+                 Heading
+              <div>
+                 #{cont}|] ())
+          "Simple test “presentation”"

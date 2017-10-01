@@ -31,6 +31,7 @@ import GHC.Generics
 data Presentation
     = StaticContent Html
     | Styling Css Presentation
+    | Encaps (Html->Html) Presentation
     | Sequential [Presentation]
  deriving (Generic)
 instance IsString Presentation where
@@ -43,9 +44,16 @@ instance Yesod Presentation
 instance YesodJquery Presentation
 
 getHomeR :: Handler Html
-getHomeR = defaultLayout . go =<< getYesod
- where go (StaticContent conts) = toWidget conts
-       go (Styling sty conts) = toWidget sty >> go conts
+getHomeR = do
+    presentation <- getYesod
+    let contents = go presentation
+    defaultLayout . addStyle presentation $ toWidget contents
+ where go (StaticContent conts) = conts
+       go (Styling sty conts) = go conts
+       go (Encaps f conts) = f $ go conts
+       addStyle (Styling sty conts) = (toWidget sty >>) . addStyle conts
+       addStyle (Encaps _ conts) = addStyle conts
+       addStyle (StaticContent _) = id
 
 yeamer :: Presentation -> IO ()
 yeamer = warp 14910
