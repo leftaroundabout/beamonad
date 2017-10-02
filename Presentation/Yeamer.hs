@@ -131,11 +131,13 @@ getHomeR = do
            = let lvl' = min 6 $ lvl + 1
                  hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
              in go lvl' $ Encaps (CustomEncapsulation $ \(Identity contsr)
-                                    -> HTM.div $ hh h <> contsr
+                                    -> HTM.div HTM.! HTM.class_ "headed-container"
+                                         $ hh h <> contsr
                                  ) conts
        go lvl (Encaps VConcated conts)
            = go lvl $ Encaps (CustomEncapsulation $ \contsrs
-                  -> foldMap (\(i,c) -> let groupName = "group"<>Txt.pack(show i)
+                  -> HTM.div HTM.! HTM.class_ "vertical-concatenation" $
+                      foldMap (\(i,c) -> let groupName = "group"<>Txt.pack(show i)
                                         in [hamlet| <div class=#{groupName}>
                                                         #{c} |]() )
                       $ zip [0::Int ..] contsrs
