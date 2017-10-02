@@ -25,6 +25,7 @@ library
                        , yesod-form
                        , shakespeare
                        , text 
+                       , aeson 
   -- hs-source-dirs:      
   default-language:    Haskell2010
 
