@@ -10,16 +10,8 @@ main = yeamer . Styling ([lucius|
                   body { color: white
                        ; background-color: black } |] ()) $
    Sequential
-     [ Encaps (\cont -> [hamlet|
-                <h2>
-                   Heading
-                <div>
-                   #{cont}|] ())
-              "Simple test “presentation”"
-     , Encaps (\cont -> [hamlet|
-                <h2>
-                   Another slide
-                <div>
-                   #{cont}|] ())
-              "Still nothing interesting..."
+     [ addHeading "Heading"
+        $ "Simple test “presentation”"
+     , addHeading "Another slide"
+        $ "Still nothing interesting..."
      ]

@@ -24,6 +24,7 @@ library
                        , yesod >=1.4 && <1.5
                        , yesod-form
                        , shakespeare
+                       , blaze-html
                        , text 
                        , aeson 
   -- hs-source-dirs:      

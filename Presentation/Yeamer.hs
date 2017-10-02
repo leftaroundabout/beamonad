@@ -8,12 +8,15 @@
 -- Portability : portable
 -- 
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE GADTs               #-}
 
 module Presentation.Yeamer ( Presentation(..)
+                           , addHeading
                            , yeamer ) where
 
 import Yesod
@@ -23,11 +26,14 @@ import qualified Data.Text as Txt
 import Data.Text (Text)
 import Data.String (IsString (..))
 import qualified Data.Aeson as JSON
+import qualified Text.Blaze.Html5 as HTM
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
 
+import Data.Foldable ()
 import Data.Monoid
+import Data.Functor.Identity
 
 import GHC.Generics
 
@@ -38,12 +44,15 @@ data PositionChange = PositionChange
     } deriving (Generic)
 instance JSON.FromJSON PositionChange
 
-data Presentation
-    = StaticContent Html
-    | Styling Css Presentation
-    | Encaps (Html->Html) Presentation
-    | Sequential [Presentation]
- deriving (Generic)
+data Container t where
+  WithHeading :: Html -> Container Identity
+  CustomEncapsulation :: (t Html -> Html) -> Container t
+
+data Presentation where
+   StaticContent :: Html -> Presentation
+   Styling :: Css -> Presentation -> Presentation
+   Encaps :: Traversable t => (Container t) -> t Presentation -> Presentation
+   Sequential :: [Presentation] -> Presentation
 instance IsString Presentation where
   fromString = StaticContent . fromString
 
@@ -61,11 +70,13 @@ getHomeR = do
    defaultLayout $ do
       addScriptRemote "https://code.jquery.com/jquery-3.1.1.min.js"
       slide <- chooseSlide "" presentation
-      let contents = go slide
-      addStyle slide $ toWidget contents
- where chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
-       chooseSlide path (Styling sty conts) = Styling sty <$> chooseSlide path conts
-       chooseSlide path (Encaps f conts) = Encaps f <$> chooseSlide path conts
+      let contents = go 0 slide
+      toWidget contents
+ where chooseSlide :: PrPath -> Presentation -> WidgetT Presentation IO Presentation
+       chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
+       chooseSlide path (Styling sty conts) = toWidget sty >> chooseSlide path conts
+       chooseSlide path (Encaps f conts)
+           = Encaps f <$> traverse (chooseSlide path) conts
        chooseSlide path (Sequential seq) = do
           positionCh <- lookupProgress path
           n <- case positionCh of
@@ -93,16 +104,23 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          Encaps (\conts -> [hamlet|
+          Encaps (CustomEncapsulation $ \(Identity conts) -> [hamlet|
                     <div class=#{thisChoice}>
                       #{conts}
-                 |]()) <$> chooseSlide newPath (seq !! n)
-       go (StaticContent conts) = conts
-       go (Styling sty conts) = go conts
-       go (Encaps f conts) = f $ go conts
-       addStyle (Styling sty conts) = (toWidget sty >>) . addStyle conts
-       addStyle (Encaps _ conts) = addStyle conts
-       addStyle (StaticContent _) = id
+                 |]()) . Identity <$> chooseSlide newPath (seq !! n)
+       go :: Int -> Presentation -> Html
+       go _ (StaticContent conts) = conts
+       go lvl (Styling sty conts) = go lvl conts
+       go lvl (Encaps (WithHeading h) conts)
+           = let lvl' = min 6 $ lvl + 1
+                 hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
+             in go lvl' $ Encaps (CustomEncapsulation $ \(Identity contsr)
+                                    -> HTM.div $ hh h <> contsr
+                                 ) conts
+       go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
+
+addHeading :: Html -> Presentation -> Presentation
+addHeading h = Encaps (WithHeading h) . Identity
 
 postChPosR :: Handler ()
 postChPosR = do
