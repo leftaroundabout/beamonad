@@ -16,7 +16,7 @@
 {-# LANGUAGE GADTs               #-}
 
 module Presentation.Yeamer ( Presentation(..)
-                           , addHeading
+                           , addHeading, vconcat
                            , yeamer ) where
 
 import Yesod
@@ -27,6 +27,7 @@ import Data.Text (Text)
 import Data.String (IsString (..))
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
+import qualified Text.Blaze.Html5.Attributes as HTM
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
@@ -34,6 +35,7 @@ import Text.Julius (rawJS)
 import Data.Foldable ()
 import Data.Monoid
 import Data.Functor.Identity
+import Control.Monad
 
 import GHC.Generics
 
@@ -46,6 +48,7 @@ instance JSON.FromJSON PositionChange
 
 data Container t where
   WithHeading :: Html -> Container Identity
+  VConcated :: Container []
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
 data Presentation where
@@ -75,6 +78,9 @@ getHomeR = do
  where chooseSlide :: PrPath -> Presentation -> WidgetT Presentation IO Presentation
        chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path (Styling sty conts) = toWidget sty >> chooseSlide path conts
+       chooseSlide path (Encaps VConcated conts)
+           = Encaps VConcated <$> forM (zip [0::Int ..] conts) `id` \(i,cell) ->
+                 chooseSlide (path<>" div.group"<>Txt.pack(show i)) cell
        chooseSlide path (Encaps f conts)
            = Encaps f <$> traverse (chooseSlide path) conts
        chooseSlide path (Sequential seq) = do
@@ -117,10 +123,20 @@ getHomeR = do
              in go lvl' $ Encaps (CustomEncapsulation $ \(Identity contsr)
                                     -> HTM.div $ hh h <> contsr
                                  ) conts
+       go lvl (Encaps VConcated conts)
+           = go lvl $ Encaps (CustomEncapsulation $ \contsrs
+                  -> foldMap (\(i,c) -> let groupName = "group"<>Txt.pack(show i)
+                                        in [hamlet| <div class=#{groupName}>
+                                                        #{c} |]() )
+                      $ zip [0::Int ..] contsrs
+                 ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
 
 addHeading :: Html -> Presentation -> Presentation
 addHeading h = Encaps (WithHeading h) . Identity
+
+vconcat :: [Presentation] -> Presentation
+vconcat = Encaps VConcated
 
 postChPosR :: Handler ()
 postChPosR = do

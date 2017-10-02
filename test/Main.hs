@@ -13,5 +13,13 @@ main = yeamer . Styling ([lucius|
      [ addHeading "Heading"
         $ "Simple test “presentation”"
      , addHeading "Another slide"
-        $ "Still nothing interesting..."
+        $ vconcat
+            [ "Static text"
+            , Sequential
+                [ "Click me!"
+                , "You've clicked." ]
+            , Sequential
+                [ "No, me!"
+                , "You've clicked." ]
+            ]
      ]
