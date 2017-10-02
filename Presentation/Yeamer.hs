@@ -92,8 +92,12 @@ getHomeR = do
             Just pos -> return pos
           let thisChoice = "no"<>Txt.pack(show n)<>"slide"
               newPath = (path<>" div."<>thisChoice)
-              next = Txt.pack . show $ n + 1
-          toWidget [julius|
+              thisSlide:slidesToGo = case splitAt n seq of
+                    (_,t:g) -> t:g
+                    (f,[])  -> [last f]
+          when (not $ null slidesToGo) $
+            let next = Txt.pack . show $ n + 1
+            in toWidget [julius|
                  $("#{rawJS newPath}").click(function(e){
                      e.stopPropagation();
                      $.ajax({
@@ -113,7 +117,7 @@ getHomeR = do
           Encaps (CustomEncapsulation $ \(Identity conts) -> [hamlet|
                     <div class=#{thisChoice}>
                       #{conts}
-                 |]()) . Identity <$> chooseSlide newPath (seq !! n)
+                 |]()) . Identity <$> chooseSlide newPath thisSlide
        go :: Int -> Presentation -> Html
        go _ (StaticContent conts) = conts
        go lvl (Styling sty conts) = go lvl conts
