@@ -126,7 +126,6 @@ postChPosR :: Handler ()
 postChPosR = do
     PositionChange path tgt <- requireJsonBody
     setProgress path tgt
-    redirect HomeR
 
 getResetR :: Handler Html
 getResetR = do
