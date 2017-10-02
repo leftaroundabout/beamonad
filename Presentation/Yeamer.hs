@@ -95,10 +95,16 @@ getHomeR = do
               thisSlide:slidesToGo = case splitAt n seq of
                     (_,t:g) -> t:g
                     (f,[])  -> [last f]
-          when (not $ null slidesToGo) $
-            let next = Txt.pack . show $ n + 1
-            in toWidget [julius|
+              [previous,next] = Txt.pack . show <$>
+                 [ max 0 $ n-1
+                 , if null slidesToGo then n else n+1 ]
+          toWidget [julius|
                  $("#{rawJS newPath}").click(function(e){
+                     if (e.ctrlKey) {
+                         reqTarget = #{rawJS previous};
+                     } else {
+                         reqTarget = #{rawJS next};
+                     }
                      e.stopPropagation();
                      $.ajax({
                            contentType: "application/json",
@@ -107,7 +113,7 @@ getHomeR = do
                            type: "POST",
                            data: JSON.stringify({
                                    posChangeLevel: "#{rawJS path}",
-                                   posChangeTarget: #{rawJS next}
+                                   posChangeTarget: reqTarget
                                  }),
                            dataType: "text"
                         });
