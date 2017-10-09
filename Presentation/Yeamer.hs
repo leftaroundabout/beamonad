@@ -16,7 +16,7 @@
 {-# LANGUAGE GADTs               #-}
 
 module Presentation.Yeamer ( Presentation(..)
-                           , addHeading, vconcat
+                           , divClass, (#%), (%##), addHeading, vconcat
                            , yeamer ) where
 
 import Yesod
@@ -34,7 +34,8 @@ import qualified Data.Map as Map
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
 
-import Data.Foldable ()
+import Data.Foldable (fold)
+import qualified Data.Semigroup as SG
 import Data.Monoid
 import Data.Functor.Identity
 import Control.Monad
@@ -49,7 +50,6 @@ data PositionChange = PositionChange
 instance JSON.FromJSON PositionChange
 
 data Container t where
-  DivBox :: Text -> Container Identity
   WithHeading :: Html -> Container Identity
   Simultaneous :: Container (Map Text)
   CustomEncapsulation :: (t Html -> Html) -> Container t
@@ -123,17 +123,10 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          Encaps (CustomEncapsulation $ \(Identity conts) -> [hamlet|
-                    <div class=#{thisChoice}>
-                      #{conts}
-                 |]()) . Identity <$> chooseSlide newPath thisSlide
+          divClass thisChoice <$> chooseSlide newPath thisSlide
        go :: Int -> Presentation -> Html
        go _ (StaticContent conts) = conts
        go lvl (Styling sty conts) = go lvl conts
-       go lvl (Encaps (DivBox className) conts)
-           = go lvl $ Encaps (CustomEncapsulation $
-                 \(Identity contsr) -> [hamlet| <div class=#{className}> #{contsr} |]())
-               conts
        go lvl (Encaps (WithHeading h) conts)
            = let lvl' = min 6 $ lvl + 1
                  hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
@@ -143,17 +136,60 @@ getHomeR = do
                                  ) conts
        go lvl (Encaps Simultaneous conts)
            = go lvl $ Encaps (CustomEncapsulation $ \contsrs
-                  -> HTM.div HTM.! HTM.class_ "vertical-concatenation" $
-                      foldMap (\(i,c) -> [hamlet| <div class=#{i}> #{c} |]() )
+                  -> foldMap (\(i,c) -> [hamlet| <div class=#{i}> #{c} |]() )
                       $ Map.toAscList contsrs
                  ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
 
+
+
+instance SG.Semigroup Presentation where
+  StaticContent c <> StaticContent d = StaticContent $ c<>d
+  Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
+     = Encaps Simultaneous . goUnion elems₀ (0::Int) $ Map.toList elems₁
+   where goUnion settled _ []
+                        = settled
+         goUnion settled iAnonym ((k,e):es)
+          | k `Map.notMember` settled
+                        = goUnion (Map.insert k e settled) iAnonym es
+          | k' <- "anonymousCell-"<>Txt.pack(show iAnonym)
+          , k'`Map.notMember` settled
+                        = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
+         goUnion s i es = goUnion s (i+1) es
+
+
 addHeading :: Html -> Presentation -> Presentation
 addHeading h = Encaps (WithHeading h) . Identity
 
+divClass :: Text -> Presentation -> Presentation
+divClass cn = Encaps Simultaneous . Map.singleton cn
+
+-- | Make a CSS grid, with layout as given in the names matrix.
+infix 9 %##
+(%##) :: Text -> [[Text]] -> Presentation -> Presentation
+cn %## grid = divClass cn . Styling ([lucius|
+           div .#{cn} {
+             display: grid;
+             grid-template-areas: #{areas};
+             grid-area: #{cn};
+           }
+        |]())
+ where areas = fold ["\""<>Txt.intercalate " " line<>"\" "
+                    | line <- grid ]
+ 
+infix 8 #%
+-- | Make this a named grid area.
+(#%) :: Text -> Presentation -> Presentation
+areaName#%Encaps Simultaneous dns
+ | [(cn,q)]<-Map.toList dns   = divClass cn $ Styling ([lucius|
+           div .#{cn} {
+              grid-area: #{areaName}
+           }
+       |]()) q
+areaName#%c = areaName #% divClass areaName c
+
 vconcat :: [Presentation] -> Presentation
-vconcat l = Encaps (DivBox "vertical-concatenation") . Identity . Encaps Simultaneous
+vconcat l = divClass "vertical-concatenation" . Encaps Simultaneous
              . Map.fromList
              $ zipWith (\i c -> ("vConcat-item"<>showIndex i, c)) [0..] l
  where showIndex i = Txt.pack $ replicate (ll - length si) '0' ++ si

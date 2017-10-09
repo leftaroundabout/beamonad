@@ -25,6 +25,7 @@ library
                        , yesod-form
                        , shakespeare
                        , blaze-html
+                       , semigroups
                        , containers
                        , text 
                        , aeson 
@@ -38,5 +39,6 @@ executable test-presentation
   build-depends:       base >=4.8 && <4.10
                        , yeamer
                        , shakespeare
+                       , semigroups
   hs-source-dirs:      test
   default-language:    Haskell2010
