@@ -25,6 +25,7 @@ library
                        , yesod-form
                        , shakespeare
                        , blaze-html
+                       , containers
                        , text 
                        , aeson 
   -- hs-source-dirs:      

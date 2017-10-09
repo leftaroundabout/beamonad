@@ -28,6 +28,8 @@ import Data.String (IsString (..))
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
@@ -47,14 +49,15 @@ data PositionChange = PositionChange
 instance JSON.FromJSON PositionChange
 
 data Container t where
+  DivBox :: Text -> Container Identity
   WithHeading :: Html -> Container Identity
-  VConcated :: Container []
+  Simultaneous :: Container (Map Text)
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
 data Presentation where
    StaticContent :: Html -> Presentation
    Styling :: Css -> Presentation -> Presentation
-   Encaps :: Traversable t => (Container t) -> t Presentation -> Presentation
+   Encaps :: Traversable t => Container t -> t Presentation -> Presentation
    Sequential :: [Presentation] -> Presentation
 instance IsString Presentation where
   fromString = StaticContent . fromString
@@ -78,9 +81,9 @@ getHomeR = do
  where chooseSlide :: PrPath -> Presentation -> WidgetT Presentation IO Presentation
        chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path (Styling sty conts) = toWidget sty >> chooseSlide path conts
-       chooseSlide path (Encaps VConcated conts)
-           = Encaps VConcated <$> forM (zip [0::Int ..] conts) `id` \(i,cell) ->
-                 chooseSlide (path<>" div.group"<>Txt.pack(show i)) cell
+       chooseSlide path (Encaps Simultaneous conts)
+           = Encaps Simultaneous <$> (`Map.traverseWithKey`conts) `id` \i cell ->
+                 chooseSlide (path<>" div."<>i) cell
        chooseSlide path (Encaps f conts)
            = Encaps f <$> traverse (chooseSlide path) conts
        chooseSlide path (Sequential seq) = do
@@ -127,6 +130,10 @@ getHomeR = do
        go :: Int -> Presentation -> Html
        go _ (StaticContent conts) = conts
        go lvl (Styling sty conts) = go lvl conts
+       go lvl (Encaps (DivBox className) conts)
+           = go lvl $ Encaps (CustomEncapsulation $
+                 \(Identity contsr) -> [hamlet| <div class=#{className}> #{contsr} |]())
+               conts
        go lvl (Encaps (WithHeading h) conts)
            = let lvl' = min 6 $ lvl + 1
                  hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
@@ -134,13 +141,11 @@ getHomeR = do
                                     -> HTM.div HTM.! HTM.class_ "headed-container"
                                          $ hh h <> contsr
                                  ) conts
-       go lvl (Encaps VConcated conts)
+       go lvl (Encaps Simultaneous conts)
            = go lvl $ Encaps (CustomEncapsulation $ \contsrs
                   -> HTM.div HTM.! HTM.class_ "vertical-concatenation" $
-                      foldMap (\(i,c) -> let groupName = "group"<>Txt.pack(show i)
-                                        in [hamlet| <div class=#{groupName}>
-                                                        #{c} |]() )
-                      $ zip [0::Int ..] contsrs
+                      foldMap (\(i,c) -> [hamlet| <div class=#{i}> #{c} |]() )
+                      $ Map.toAscList contsrs
                  ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
 
@@ -148,7 +153,9 @@ addHeading :: Html -> Presentation -> Presentation
 addHeading h = Encaps (WithHeading h) . Identity
 
 vconcat :: [Presentation] -> Presentation
-vconcat = Encaps VConcated
+vconcat = Encaps (DivBox "vertical-concatenation") . Identity . Encaps Simultaneous
+           . Map.fromList
+           . zipWith (\i c -> ("vConcat-item"<>Txt.pack(show i), c)) [0..]
 
 postChPosR :: Handler ()
 postChPosR = do
