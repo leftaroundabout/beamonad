@@ -153,9 +153,12 @@ addHeading :: Html -> Presentation -> Presentation
 addHeading h = Encaps (WithHeading h) . Identity
 
 vconcat :: [Presentation] -> Presentation
-vconcat = Encaps (DivBox "vertical-concatenation") . Identity . Encaps Simultaneous
-           . Map.fromList
-           . zipWith (\i c -> ("vConcat-item"<>Txt.pack(show i), c)) [0..]
+vconcat l = Encaps (DivBox "vertical-concatenation") . Identity . Encaps Simultaneous
+             . Map.fromList
+             $ zipWith (\i c -> ("vConcat-item"<>showIndex i, c)) [0..] l
+ where showIndex i = Txt.pack $ replicate (ll - length si) '0' ++ si
+        where si = show i
+       ll = length (show $ length l)
 
 postChPosR :: Handler ()
 postChPosR = do
