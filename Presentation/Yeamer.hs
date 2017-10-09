@@ -12,11 +12,16 @@
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE GADTs               #-}
 
-module Presentation.Yeamer ( Presentation(..)
-                           , divClass, (#%), (%##), addHeading, vconcat
+module Presentation.Yeamer ( Presentation
+                           , staticContent
+                           , divClass, (#%), (%##)
+                           , addHeading, vconcat
+                           , styling
+                           , sequential
                            , yeamer ) where
 
 import Yesod
@@ -54,13 +59,16 @@ data Container t where
   Simultaneous :: Container (Map Text)
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
-data Presentation where
-   StaticContent :: Html -> Presentation
-   Styling :: Css -> Presentation -> Presentation
-   Encaps :: Traversable t => Container t -> t Presentation -> Presentation
-   Sequential :: [Presentation] -> Presentation
-instance IsString Presentation where
-  fromString = StaticContent . fromString
+data IPresentation r where
+   StaticContent :: r -> Html -> IPresentation r
+   Styling :: Css -> IPresentation r -> IPresentation r
+   Encaps :: Traversable t => Container t -> t (IPresentation r) -> IPresentation (t r)
+   Sequential :: [IPresentation r] -> IPresentation [r]
+   DynamicCalculation :: (r -> s) -> IPresentation r -> IPresentation s
+instance Monoid r => IsString (IPresentation r) where
+  fromString = StaticContent mempty . fromString
+
+type Presentation = IPresentation ()
 
 mkYesod "Presentation" [parseRoutes|
 / HomeR GET
@@ -78,8 +86,8 @@ getHomeR = do
       slide <- chooseSlide "" presentation
       let contents = go 0 slide
       toWidget contents
- where chooseSlide :: PrPath -> Presentation -> WidgetT Presentation IO Presentation
-       chooseSlide _ (StaticContent conts) = pure $ StaticContent conts
+ where chooseSlide :: PrPath -> IPresentation r -> WidgetT Presentation IO (IPresentation r)
+       chooseSlide _ (StaticContent r conts) = pure $ StaticContent r conts
        chooseSlide path (Styling sty conts) = toWidget sty >> chooseSlide path conts
        chooseSlide path (Encaps Simultaneous conts)
            = Encaps Simultaneous <$> (`Map.traverseWithKey`conts) `id` \i cell ->
@@ -123,9 +131,9 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          divClass thisChoice <$> chooseSlide newPath thisSlide
-       go :: Int -> Presentation -> Html
-       go _ (StaticContent conts) = conts
+          fmap pure . divClass thisChoice <$> chooseSlide newPath thisSlide
+       go :: Int -> IPresentation r -> Html
+       go _ (StaticContent _ conts) = conts
        go lvl (Styling sty conts) = go lvl conts
        go lvl (Encaps (WithHeading h) conts)
            = let lvl' = min 6 $ lvl + 1
@@ -143,8 +151,8 @@ getHomeR = do
 
 
 
-instance SG.Semigroup Presentation where
-  StaticContent c <> StaticContent d = StaticContent $ c<>d
+instance SG.Semigroup r => SG.Semigroup (IPresentation r) where
+  StaticContent rc c <> StaticContent rd d = StaticContent (rc SG.<>rd) (c<>d)
   Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
      = Encaps Simultaneous . goUnion elems₀ (0::Int) $ Map.toList elems₁
    where goUnion settled _ []
@@ -157,16 +165,19 @@ instance SG.Semigroup Presentation where
                         = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
          goUnion s i es = goUnion s (i+1) es
 
+instance Functor IPresentation where
+  fmap f (DynamicCalculation g q) = DynamicCalculation (f . g) q
+  fmap f q = DynamicCalculation f q
 
-addHeading :: Html -> Presentation -> Presentation
-addHeading h = Encaps (WithHeading h) . Identity
+addHeading :: Html -> IPresentation r -> IPresentation r
+addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
-divClass :: Text -> Presentation -> Presentation
-divClass cn = Encaps Simultaneous . Map.singleton cn
+divClass :: Text -> IPresentation r -> IPresentation r
+divClass cn = fmap (Map.!cn) . Encaps Simultaneous . Map.singleton cn
 
 -- | Make a CSS grid, with layout as given in the names matrix.
 infix 9 %##
-(%##) :: Text -> [[Text]] -> Presentation -> Presentation
+(%##) :: Text -> [[Text]] -> IPresentation r -> IPresentation r
 cn %## grid = divClass cn . Styling ([lucius|
            div .#{cn} {
              display: grid;
@@ -179,22 +190,35 @@ cn %## grid = divClass cn . Styling ([lucius|
  
 infix 8 #%
 -- | Make this a named grid area.
-(#%) :: Text -> Presentation -> Presentation
+(#%) :: Text -> IPresentation r -> IPresentation r
+areaName#%DynamicCalculation f q = f <$> areaName #% q
 areaName#%Encaps Simultaneous dns
- | [(cn,q)]<-Map.toList dns   = divClass cn $ Styling ([lucius|
+ | [(cn,q)]<-Map.toList dns   = Encaps Simultaneous . Map.singleton cn $ Styling ([lucius|
            div .#{cn} {
               grid-area: #{areaName}
            }
        |]()) q
 areaName#%c = areaName #% divClass areaName c
 
-vconcat :: [Presentation] -> Presentation
-vconcat l = divClass "vertical-concatenation" . Encaps Simultaneous
+styling :: Css -> IPresentation r -> IPresentation r
+styling = Styling
+
+staticContent :: Monoid r => Html -> IPresentation r
+staticContent = StaticContent mempty
+
+sequential :: Monoid r => [IPresentation r] -> IPresentation r
+sequential = fmap fold . Sequential
+
+vconcat :: Monoid r => [IPresentation r] -> IPresentation r
+vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
+             . divClass "vertical-concatenation" . Encaps Simultaneous
              . Map.fromList
-             $ zipWith (\i c -> ("vConcat-item"<>showIndex i, c)) [0..] l
- where showIndex i = Txt.pack $ replicate (ll - length si) '0' ++ si
+             $ zipWith (\i c -> ("vConcat-item"<>i, c)) indices l
+ where indices = showIndex <$> [0 .. ll-1]
+       showIndex i = Txt.pack $ replicate (lll - length si) '0' ++ si
         where si = show i
-       ll = length (show $ length l)
+       ll = length l
+       lll = length $ show ll
 
 postChPosR :: Handler ()
 postChPosR = do

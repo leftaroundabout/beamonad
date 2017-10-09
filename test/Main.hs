@@ -9,7 +9,7 @@ import Data.Semigroup
 import Data.String (fromString)
 
 main :: IO ()
-main = yeamer . Styling ([lucius|
+main = yeamer . styling ([lucius|
                   body {
                     height: 100vh;
                   }
@@ -30,22 +30,22 @@ main = yeamer . Styling ([lucius|
                     flex-direction: column;
                   }
                  |] ()) $
-   Sequential
+   sequential
      [ addHeading "Heading"
         $ "Simple test “presentation”"
      , addHeading "Another slide"
         $ vconcat
-            [ StaticContent $ [hamlet|
+            [ staticContent $ [hamlet|
                  Static text
                  <br>
                  More text
                  <br>
                  More text
                |]()
-            , Sequential
+            , sequential
                 [ "Click me!"
                 , "You've clicked." ]
-            , Sequential
+            , sequential
                 [ "No, me!"
                 , "You've clicked." ]
             ]
