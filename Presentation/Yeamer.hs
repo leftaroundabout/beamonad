@@ -30,6 +30,7 @@ import Yesod.Form.Jquery
 import qualified Data.Text as Txt
 import Data.Text (Text)
 import Data.String (IsString (..))
+import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
@@ -42,6 +43,7 @@ import Text.Julius (rawJS)
 import Data.Foldable (fold)
 import qualified Data.Semigroup as SG
 import Data.Monoid
+import Data.Maybe
 import Data.Functor.Identity
 import Control.Monad
 
@@ -50,7 +52,7 @@ import GHC.Generics
 type PrPath = Text
 data PositionChange = PositionChange
     { posChangeLevel :: PrPath
-    , posChangeTarget :: Int
+    , posChangeIsRevert :: Bool
     } deriving (Generic)
 instance JSON.FromJSON PositionChange
 
@@ -60,13 +62,17 @@ data Container t where
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
 data IPresentation r where
-   StaticContent :: r -> Html -> IPresentation r
+   StaticContent :: Html -> Presentation
    Styling :: Css -> IPresentation r -> IPresentation r
    Encaps :: Traversable t => Container t -> t (IPresentation r) -> IPresentation (t r)
-   Sequential :: [IPresentation r] -> IPresentation [r]
-   DynamicCalculation :: (r -> s) -> IPresentation r -> IPresentation s
-instance Monoid r => IsString (IPresentation r) where
-  fromString = StaticContent mempty . fromString
+   Pure :: r -> IPresentation r
+   Deterministic :: (r -> s) -> IPresentation r -> IPresentation s
+   Interactive :: (JSON.FromJSON r, JSON.ToJSON r)
+          => Presentation -> IO r -> IPresentation r
+   Dependent :: (JSON.FromJSON x, JSON.ToJSON x)
+                   => IPresentation x -> (x -> IPresentation r) -> IPresentation r
+instance IsString Presentation where
+  fromString = StaticContent . fromString
 
 type Presentation = IPresentation ()
 
@@ -83,38 +89,48 @@ getHomeR = do
    presentation <- getYesod
    defaultLayout $ do
       addScriptRemote "https://code.jquery.com/jquery-3.1.1.min.js"
-      slide <- chooseSlide "" presentation
+      slide <- chooseSlide "" "" Nothing Nothing presentation
       let contents = go 0 slide
       toWidget contents
- where chooseSlide :: PrPath -> IPresentation r -> WidgetT Presentation IO (IPresentation r)
-       chooseSlide _ (StaticContent r conts) = pure $ StaticContent r conts
-       chooseSlide path (Styling sty conts) = toWidget sty >> chooseSlide path conts
-       chooseSlide path (Encaps Simultaneous conts)
-           = Encaps Simultaneous <$> (`Map.traverseWithKey`conts) `id` \i cell ->
-                 chooseSlide (path<>" div."<>i) cell
-       chooseSlide path (Encaps f conts)
-           = Encaps f <$> traverse (chooseSlide path) conts
-       chooseSlide path (Sequential seq) = do
-          positionCh <- lookupProgress path
-          n <- case positionCh of
-            Nothing -> do
-              setProgress path 0
-              return 0
-            Just pos -> return pos
-          let thisChoice = "no"<>Txt.pack(show n)<>"slide"
+ where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
+                       -> IPresentation r -> WidgetT Presentation IO Presentation
+       chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
+       chooseSlide path "" Nothing Nothing (Styling sty conts)
+                     = toWidget sty >> chooseSlide path "" Nothing Nothing conts
+       chooseSlide path "" Nothing Nothing (Encaps Simultaneous conts)
+           = discardResult . Encaps Simultaneous
+               <$> (`Map.traverseWithKey`conts) `id` \i cell ->
+                 chooseSlide (path<>" div."<>i) "" Nothing Nothing cell
+       chooseSlide path "" Nothing Nothing (Encaps f conts)
+           = discardResult . Encaps f
+               <$> traverse (chooseSlide path "" Nothing Nothing) conts
+       chooseSlide path "" Nothing Nothing (Interactive conts _)
+           = discardResult <$> chooseSlide path "" Nothing Nothing conts
+       chooseSlide path "" Nothing Nothing (Deterministic _ conts)
+           = discardResult <$> chooseSlide path "" Nothing Nothing conts
+       chooseSlide path pdiv bwd fwd (Dependent def opt) = do
+          let progPath = path<>" div.no"<>pdiv<>"slide"
+          positionCh <- lookupProgress progPath
+          case positionCh of
+            Nothing -> chooseSlide path (pdiv<>"0") bwd (Just progPath) def
+            Just x -> chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
+       chooseSlide path pdiv bwd fwd pres
+        | isJust bwd || isJust fwd  = do
+          let thisChoice = "no"<>pdiv<>"slide"
               newPath = (path<>" div."<>thisChoice)
-              thisSlide:slidesToGo = case splitAt n seq of
-                    (_,t:g) -> t:g
-                    (f,[])  -> [last f]
-              [previous,next] = Txt.pack . show <$>
-                 [ max 0 $ n-1
-                 , if null slidesToGo then n else n+1 ]
+              [revertPossible, progressPossible]
+                 = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
+              [previous,next] = maybe "null" (("'"<>).(<>"'")) <$> [bwd, fwd]
           toWidget [julius|
                  $("#{rawJS newPath}").click(function(e){
-                     if (e.ctrlKey) {
-                         reqTarget = #{rawJS previous};
+                     if (e.ctrlKey && #{rawJS revertPossible}) {
+                         isRevert = true;
+                         path = #{rawJS previous};
+                     } else if (#{rawJS progressPossible}) {
+                         isRevert = false;
+                         path = #{rawJS next};
                      } else {
-                         reqTarget = #{rawJS next};
+                         return;
                      }
                      e.stopPropagation();
                      $.ajax({
@@ -123,17 +139,21 @@ getHomeR = do
                            url: "@{ChPosR}",
                            type: "POST",
                            data: JSON.stringify({
-                                   posChangeLevel: "#{rawJS path}",
-                                   posChangeTarget: reqTarget
+                                   posChangeLevel: path,
+                                   posChangeIsRevert: isRevert
                                  }),
                            dataType: "text"
                         });
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          fmap pure . divClass thisChoice <$> chooseSlide newPath thisSlide
+          divClass thisChoice <$> chooseSlide newPath "" Nothing Nothing pres
        go :: Int -> IPresentation r -> Html
-       go _ (StaticContent _ conts) = conts
+       go _ (StaticContent conts) = conts
+       go _ (Pure _) = error $ "Error: impossible to render a slide of an empty presentation."
+       go _ (Dependent _ _) = error $ "Internal error: un-selected Dependent option while rendering to HTML."
+       go lvl (Deterministic f conts) = go lvl conts
+       go lvl (Interactive conts _) = go lvl conts
        go lvl (Styling sty conts) = go lvl conts
        go lvl (Encaps (WithHeading h) conts)
            = let lvl' = min 6 $ lvl + 1
@@ -152,7 +172,7 @@ getHomeR = do
 
 
 instance SG.Semigroup r => SG.Semigroup (IPresentation r) where
-  StaticContent rc c <> StaticContent rd d = StaticContent (rc SG.<>rd) (c<>d)
+  StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
      = Encaps Simultaneous . goUnion elems₀ (0::Int) $ Map.toList elems₁
    where goUnion settled _ []
@@ -164,10 +184,37 @@ instance SG.Semigroup r => SG.Semigroup (IPresentation r) where
           , k'`Map.notMember` settled
                         = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
          goUnion s i es = goUnion s (i+1) es
+instance Monoid Presentation where
+  mappend = (SG.<>)
+  mempty = fmap (const mempty) . Encaps Simultaneous $ Map.empty
+
+
+
+outerConstructorName :: IPresentation r -> String
+outerConstructorName (StaticContent _) = "StaticContent"
+outerConstructorName (Styling _ _) = "Styling"
+outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
+outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
+outerConstructorName (Encaps Simultaneous _) = "Encaps Simultaneous"
+outerConstructorName (Pure _) = "Pure"
+outerConstructorName (Deterministic _ _) = "Deterministic"
+outerConstructorName (Interactive _ _) = "Interactive"
+outerConstructorName (Dependent _ _) = "Dependent"
+
+discardResult :: IPresentation r -> Presentation
+discardResult (StaticContent c) = StaticContent c
+discardResult q = fmap (const ()) q
 
 instance Functor IPresentation where
-  fmap f (DynamicCalculation g q) = DynamicCalculation (f . g) q
-  fmap f q = DynamicCalculation f q
+  fmap f (Deterministic g q) = Deterministic (f . g) q
+  fmap f (Pure x) = Pure $ f x
+  fmap f q = Deterministic f q
+instance Applicative IPresentation where
+  pure = Pure
+instance Monad IPresentation where
+  return = pure
+--  Styling s x >>= f = case x >>= f of
+    
 
 addHeading :: Html -> IPresentation r -> IPresentation r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
@@ -191,7 +238,7 @@ cn %## grid = divClass cn . Styling ([lucius|
 infix 8 #%
 -- | Make this a named grid area.
 (#%) :: Text -> IPresentation r -> IPresentation r
-areaName#%DynamicCalculation f q = f <$> areaName #% q
+areaName#%Deterministic f q = f <$> areaName #% q
 areaName#%Encaps Simultaneous dns
  | [(cn,q)]<-Map.toList dns   = Encaps Simultaneous . Map.singleton cn $ Styling ([lucius|
            div .#{cn} {
@@ -204,10 +251,12 @@ styling :: Css -> IPresentation r -> IPresentation r
 styling = Styling
 
 staticContent :: Monoid r => Html -> IPresentation r
-staticContent = StaticContent mempty
+staticContent = fmap (const mempty) . StaticContent
 
-sequential :: Monoid r => [IPresentation r] -> IPresentation r
-sequential = fmap fold . Sequential
+sequential :: Monoid r => [Presentation] -> IPresentation r
+sequential [] = pure mempty
+sequential [slide] = fmap (const mempty) slide
+sequential (slide:slides) = Dependent slide . const $ sequential slides
 
 vconcat :: Monoid r => [IPresentation r] -> IPresentation r
 vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
@@ -222,19 +271,62 @@ vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
 
 postChPosR :: Handler ()
 postChPosR = do
-    PositionChange path tgt <- requireJsonBody
-    setProgress path tgt
+    PositionChange path isRevert <- requireJsonBody
+    if isRevert
+     then revertProgress path
+     else do
+        let go :: ToJSON v => (r -> v)
+                -> (PrPath, Text) -> [String] -> IPresentation r -> Handler ()
+            go enc _ [] (StaticContent _) = setProgress path $ enc ()
+            go enc _ [] (Pure x) = setProgress path $ enc x
+            go enc _ [] (Interactive _ q) = setProgress path . enc =<< liftIO q
+            go enc crumbs [] (Encaps (WithHeading _) (Identity cont))
+                = go (enc . Identity) crumbs [] cont
+            go enc crumbs [] (Deterministic f c) = go (enc . f) crumbs [] c
+            go _ crumbs path (Interactive p _) = go id crumbs path p
+            go _ (crumbh, crumbp) (('0':prog):path') (Dependent def _)
+                = go id (crumbh, crumbp<>"0") (prog:path') def
+            go enc (crumbh, crumbp) (('1':prog):path') (Dependent _ opt) = do
+               Just key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
+               go enc (crumbh, crumbp<>"1") (prog:path') $ opt key
+            go _ (crumbh, crumbp) ([]:path') (Dependent def _)
+                = go id (crumbh<>" div.no"<>crumbp<>"slide", "") path' def
+            go _ _ (dir:_) (Dependent _ _)
+               = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
+            go enc crumbs path (Styling _ cont) = go enc crumbs path cont
+            go enc (crumbh, _) (divid:path) (Encaps Simultaneous conts)
+                  = go (enc . Map.singleton dividt) (crumbh, "") path $ conts Map.! dividt
+             where dividt = Txt.pack divid
+            go _ _ [] pres
+               = error $ "Need further path information to extract value from a "++outerConstructorName pres
+            go _ _ (dir:_) pres
+               = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
+        presentation <- getYesod
+        go id ("","") (finePath <$> Txt.words path) presentation
+ where finePath p
+        | Just prog <- Txt.stripPrefix "div.no"
+                     =<< Txt.stripSuffix "slide" p
+           = Txt.unpack prog
+        | otherwise  = Txt.unpack p
 
 getResetR :: Handler Html
 getResetR = do
     clearSession
     redirect HomeR
 
-lookupProgress :: MonadHandler m => PrPath -> m (Maybe Int)
-lookupProgress path = fmap (read . Txt.unpack) <$> lookupSession ("progress"<>path)
+lookupProgress :: (MonadHandler m, JSON.FromJSON x) => PrPath -> m (Maybe x)
+lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
+ where decode bs
+        | Just decoded <- JSON.decode (BSL.fromStrict bs)  = decoded
+        | otherwise = error $
+            "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
 
-setProgress :: MonadHandler m => PrPath -> Int -> m ()
-setProgress path prog = setSession ("progress"<>path) (Txt.pack $ show prog)
+
+setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> x -> m ()
+setProgress path prog = setSessionBS ("progress"<>path) (BSL.toStrict $ JSON.encode prog)
+
+revertProgress :: MonadHandler m => PrPath -> m ()
+revertProgress path = deleteSession ("progress"<>path)
 
 yeamer :: Presentation -> IO ()
 yeamer = warp 14910
