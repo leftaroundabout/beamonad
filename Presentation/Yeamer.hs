@@ -63,6 +63,7 @@ data Container t where
 
 data IPresentation r where
    StaticContent :: Html -> Presentation
+   Resultless :: IPresentation r -> Presentation
    Styling :: Css -> IPresentation r -> IPresentation r
    Encaps :: Traversable t => Container t -> t (IPresentation r) -> IPresentation (t r)
    Pure :: r -> IPresentation r
@@ -105,6 +106,8 @@ getHomeR = do
            = discardResult . Encaps f
                <$> traverse (chooseSlide path "" Nothing Nothing) conts
        chooseSlide path "" Nothing Nothing (Interactive conts _)
+           = discardResult <$> chooseSlide path "" Nothing Nothing conts
+       chooseSlide path "" Nothing Nothing (Resultless conts)
            = discardResult <$> chooseSlide path "" Nothing Nothing conts
        chooseSlide path "" Nothing Nothing (Deterministic _ conts)
            = discardResult <$> chooseSlide path "" Nothing Nothing conts
@@ -152,7 +155,8 @@ getHomeR = do
        go _ (StaticContent conts) = conts
        go _ (Pure _) = error $ "Error: impossible to render a slide of an empty presentation."
        go _ (Dependent _ _) = error $ "Internal error: un-selected Dependent option while rendering to HTML."
-       go lvl (Deterministic f conts) = go lvl conts
+       go lvl (Deterministic _ conts) = go lvl conts
+       go lvl (Resultless conts) = go lvl conts
        go lvl (Interactive conts _) = go lvl conts
        go lvl (Styling sty conts) = go lvl conts
        go lvl (Encaps (WithHeading h) conts)
@@ -171,7 +175,7 @@ getHomeR = do
 
 
 
-instance SG.Semigroup r => SG.Semigroup (IPresentation r) where
+instance Monoid r => SG.Semigroup (IPresentation r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
      = Encaps Simultaneous . goUnion elems₀ (0::Int) $ Map.toList elems₁
@@ -184,9 +188,14 @@ instance SG.Semigroup r => SG.Semigroup (IPresentation r) where
           , k'`Map.notMember` settled
                         = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
          goUnion s i es = goUnion s (i+1) es
+  Resultless (Encaps Simultaneous ps) <> Resultless (Encaps Simultaneous qs)
+      = Resultless $ Encaps Simultaneous (discardResult<$>ps)
+               SG.<> Encaps Simultaneous (discardResult<$>qs)
+  p <> q = fmap fold . Encaps Simultaneous $ Map.fromList
+             [("anonymousCell-0", p), ("anonymousCell-1", q)]
 instance Monoid Presentation where
   mappend = (SG.<>)
-  mempty = fmap (const mempty) . Encaps Simultaneous $ Map.empty
+  mempty = Resultless . Encaps Simultaneous $ Map.empty
 
 
 
@@ -203,7 +212,8 @@ outerConstructorName (Dependent _ _) = "Dependent"
 
 discardResult :: IPresentation r -> Presentation
 discardResult (StaticContent c) = StaticContent c
-discardResult q = fmap (const ()) q
+discardResult (Resultless p) = Resultless p
+discardResult p = Resultless p
 
 instance Functor IPresentation where
   fmap f (Deterministic g q) = Deterministic (f . g) q
@@ -284,6 +294,7 @@ postChPosR = do
             go crumbs [] (Encaps Simultaneous conts)
                 = sequence <$> mapM (go crumbs []) conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
+            go crumbs path (Resultless c) = fmap (const()) <$> go crumbs path c
             go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
             go (crumbh, crumbp) (('0':prog):path') (Dependent def _)
                 = const Nothing <$> go (crumbh, crumbp<>"0") (prog:path') def
