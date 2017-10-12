@@ -275,34 +275,40 @@ postChPosR = do
     if isRevert
      then revertProgress path
      else do
-        let go :: ToJSON v => (r -> v)
-                -> (PrPath, Text) -> [String] -> IPresentation r -> Handler ()
-            go enc _ [] (StaticContent _) = setProgress path $ enc ()
-            go enc _ [] (Pure x) = setProgress path $ enc x
-            go enc _ [] (Interactive _ q) = setProgress path . enc =<< liftIO q
-            go enc crumbs [] (Encaps (WithHeading _) (Identity cont))
-                = go (enc . Identity) crumbs [] cont
-            go enc crumbs [] (Deterministic f c) = go (enc . f) crumbs [] c
-            go _ crumbs path (Interactive p _) = go id crumbs path p
-            go _ (crumbh, crumbp) (('0':prog):path') (Dependent def _)
-                = go id (crumbh, crumbp<>"0") (prog:path') def
-            go enc (crumbh, crumbp) (('1':prog):path') (Dependent _ opt) = do
+        let go :: (PrPath, Text) -> [String] -> IPresentation r -> Handler (Maybe r)
+            go _ [] (StaticContent _) = return $ Just ()
+            go _ [] (Pure x) = return $ Just x
+            go _ [] (Interactive _ q) = Just <$> liftIO q
+            go crumbs path (Encaps (WithHeading _) (Identity cont))
+                = fmap Identity <$> go crumbs path cont
+            go crumbs [] (Encaps Simultaneous conts)
+                = sequence <$> mapM (go crumbs []) conts
+            go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
+            go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
+            go (crumbh, crumbp) (('0':prog):path') (Dependent def _)
+                = const Nothing <$> go (crumbh, crumbp<>"0") (prog:path') def
+            go (crumbh, crumbp) (('1':prog):path') (Dependent _ opt) = do
                Just key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
-               go enc (crumbh, crumbp<>"1") (prog:path') $ opt key
-            go _ (crumbh, crumbp) ([]:path') (Dependent def _)
-                = go id (crumbh<>" div.no"<>crumbp<>"slide", "") path' def
-            go _ _ (dir:_) (Dependent _ _)
+               go (crumbh, crumbp<>"1") (prog:path') $ opt key
+            go crumbs [] (Dependent def _) = do
+               Just key <- go crumbs [] def
+               setProgress path key
+               return Nothing
+            go crumbs ([]:t) p = go crumbs t p
+            go _ (dir:_) (Dependent _ _)
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
-            go enc crumbs path (Styling _ cont) = go enc crumbs path cont
-            go enc (crumbh, _) (divid:path) (Encaps Simultaneous conts)
-                  = go (enc . Map.singleton dividt) (crumbh, "") path $ conts Map.! dividt
-             where dividt = Txt.pack divid
-            go _ _ [] pres
+            go crumbs path (Styling _ cont) = go crumbs path cont
+            go (crumbh, _) (divid:path) (Encaps Simultaneous conts)
+              | Just dividt <- Txt.stripPrefix "div." $ Txt.pack divid
+              , Just subSel <- Map.lookup dividt conts
+                   = fmap (Map.singleton dividt) <$> go (crumbh, "") path subSel
+            go _ [] pres
                = error $ "Need further path information to extract value from a "++outerConstructorName pres
-            go _ _ (dir:_) pres
+            go _ (dir:_) pres
                = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
         presentation <- getYesod
-        go id ("","") (finePath <$> Txt.words path) presentation
+        go ("","") (finePath <$> Txt.words path) presentation
+        return ()
  where finePath p
         | Just prog <- Txt.stripPrefix "div.no"
                      =<< Txt.stripSuffix "slide" p
