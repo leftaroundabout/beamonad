@@ -308,7 +308,7 @@ postChPosR = do
                case key of
                  Just k -> do
                    setProgress path k
-                   go' (crumbh,crumbp<>"1") [[]] $ opt k
+                   return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
             go (crumbh, crumbp) [] (Dependent _ opt) = do
                key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
