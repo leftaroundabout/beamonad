@@ -129,7 +129,7 @@ getHomeR = do
                      if (e.ctrlKey && #{rawJS revertPossible}) {
                          isRevert = true;
                          path = #{rawJS previous};
-                     } else if (#{rawJS progressPossible}) {
+                     } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
                          isRevert = false;
                          path = #{rawJS next};
                      } else {
@@ -285,27 +285,36 @@ postChPosR = do
     if isRevert
      then revertProgress path
      else do
-        let go :: (PrPath, Text) -> [String] -> IPresentation r -> Handler (Maybe r)
+        let go, go' :: (PrPath, Text) -> [String] -> IPresentation r -> Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
             go crumbs path (Encaps (WithHeading _) (Identity cont))
                 = fmap Identity <$> go crumbs path cont
-            go crumbs [] (Encaps Simultaneous conts)
-                = sequence <$> mapM (go crumbs []) conts
+            go (crumbh,crumbp) [] (Encaps Simultaneous conts)
+                = sequence <$> Map.traverseWithKey
+                     (\divid -> go (crumbh<>" div."<>divid, crumbp) []) conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
-            go crumbs path (Resultless c) = fmap (const()) <$> go crumbs path c
+            go _ [] (Resultless c) = return $ Just ()
+            go crumbs path (Resultless c) = const(Just()) <$> go crumbs path c
             go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
             go (crumbh, crumbp) (('0':prog):path') (Dependent def _)
-                = const Nothing <$> go (crumbh, crumbp<>"0") (prog:path') def
+                = const Nothing <$> go' (crumbh, crumbp<>"0") (prog:path') def
             go (crumbh, crumbp) (('1':prog):path') (Dependent _ opt) = do
                Just key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
-               go (crumbh, crumbp<>"1") (prog:path') $ opt key
-            go crumbs [] (Dependent def _) = do
-               Just key <- go crumbs [] def
-               setProgress path key
-               return Nothing
-            go crumbs ([]:t) p = go crumbs t p
+               go' (crumbh, crumbp<>"1") (prog:path') $ opt key
+            go (crumbh,crumbp) [[]] (Dependent def opt) = do
+               key <- go' (crumbh,crumbp<>"0") [[]] def
+               case key of
+                 Just k -> do
+                   setProgress path k
+                   go' (crumbh,crumbp<>"1") [[]] $ opt k
+                 Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
+            go (crumbh, crumbp) [] (Dependent _ opt) = do
+               key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
+               case key of
+                 Just k -> go' (crumbh, crumbp<>"1") [] $ opt k
+                 Nothing -> return Nothing
             go _ (dir:_) (Dependent _ _)
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
@@ -317,6 +326,11 @@ postChPosR = do
                = error $ "Need further path information to extract value from a "++outerConstructorName pres
             go _ (dir:_) pres
                = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
+            go' crumbs path p@(Dependent _ _)  = go crumbs path p
+            go' (crumbh,crumbp) ([]:t) p = go (crumbh<>" div.no"<>crumbp<>"slide", "") t p
+            go' (crumbh,crumbp) [] p
+             | not $ Txt.null crumbp  = go (crumbh<>" div.no"<>crumbp<>"slide", "") [] p
+            go' crumbs path p = go crumbs path p
         presentation <- getYesod
         go ("","") (finePath <$> Txt.words path) presentation
         return ()
