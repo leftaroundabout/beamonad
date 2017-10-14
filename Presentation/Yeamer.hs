@@ -15,6 +15,7 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE ConstraintKinds     #-}
 
 module Presentation.Yeamer ( Presentation
                            , staticContent
@@ -61,6 +62,8 @@ data Container t where
   Simultaneous :: Container (Map Text)
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
+type Sessionable r = (ToJSON r, FromJSON r)
+
 data IPresentation r where
    StaticContent :: Html -> Presentation
    Resultless :: IPresentation r -> Presentation
@@ -68,9 +71,9 @@ data IPresentation r where
    Encaps :: Traversable t => Container t -> t (IPresentation r) -> IPresentation (t r)
    Pure :: r -> IPresentation r
    Deterministic :: (r -> s) -> IPresentation r -> IPresentation s
-   Interactive :: (JSON.FromJSON r, JSON.ToJSON r)
+   Interactive :: Sessionable r
           => Presentation -> IO r -> IPresentation r
-   Dependent :: (JSON.FromJSON x, JSON.ToJSON x)
+   Dependent :: Sessionable x
                    => IPresentation x -> (x -> IPresentation r) -> IPresentation r
 instance IsString Presentation where
   fromString = StaticContent . fromString
