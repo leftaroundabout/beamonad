@@ -332,7 +332,7 @@ postChPosR = do
                key <- go' (crumbh,crumbp<>"0") [[]] def
                case key of
                  Just k -> do
-                   setProgress path k
+                   setProgress path Nothing k
                    skipContentless (crumbh, crumbp<>"1") $ opt k
                    return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
@@ -373,7 +373,7 @@ postChPosR = do
                     key' <- skipContentless (crumbh, crumbp<>"0") def
                     case key' of
                       Just k' -> do
-                        setProgress thisDecision k'
+                        setProgress thisDecision (Just path) k'
                         skipContentless (crumbh, crumbp<>"1") $ opt k'
                       Nothing -> return Nothing
             skipContentless crumbs (Styling _ c) = skipContentless crumbs c
@@ -398,16 +398,23 @@ getResetR = do
 lookupProgress :: (MonadHandler m, JSON.FromJSON x) => PrPath -> m (Maybe x)
 lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
  where decode bs
-        | Just decoded <- JSON.decode (BSL.fromStrict bs)  = decoded
+        | Just decoded <- JSON.decode (BSL.fromStrict bs) = decoded
         | otherwise = error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
 
 
-setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> x -> m ()
-setProgress path prog = setSessionBS ("progress"<>path) (BSL.toStrict $ JSON.encode prog)
+setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
+setProgress path skippedFrom prog = do
+   setSessionBS ("progress"<>path) (BSL.toStrict $ JSON.encode prog)
+   forM_ skippedFrom $ setSession ("progress-skip-origin"<>path)
 
 revertProgress :: MonadHandler m => PrPath -> m ()
-revertProgress path = deleteSession ("progress"<>path)
+revertProgress path = do
+   deleteSession $ "progress"<>path
+   let skipOrigKey = "progress-skip-origin"<>path
+   lookupSession skipOrigKey >>= mapM_ `id` \skippedFrom -> do
+        deleteSession $ "progress"<>skippedFrom
+        deleteSession skipOrigKey
 
 yeamer :: Presentation -> IO ()
 yeamer = warp 14910
