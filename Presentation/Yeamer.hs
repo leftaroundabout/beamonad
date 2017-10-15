@@ -23,7 +23,6 @@ module Presentation.Yeamer ( Presentation
                            , divClass, (#%), (%##)
                            , addHeading, (======), vconcat
                            , styling
-                           , sequential
                            , yeamer ) where
 
 import Yesod
@@ -286,11 +285,6 @@ styling = Styling
 
 staticContent :: Monoid r => Html -> IPresentation r
 staticContent = fmap (const mempty) . StaticContent
-
-sequential :: Monoid r => [Presentation] -> IPresentation r
-sequential [] = pure mempty
-sequential [slide] = fmap (const mempty) slide
-sequential (slide:slides) = Dependent slide . const $ sequential slides
 
 vconcat :: (Monoid r, Sessionable r) => [IPresentation r] -> IPresentation r
 vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
