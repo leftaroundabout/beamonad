@@ -64,22 +64,22 @@ data Container t where
 
 type Sessionable r = (ToJSON r, FromJSON r)
 
-data IPresentation r where
-   StaticContent :: Html -> Presentation
-   Resultless :: IPresentation r -> Presentation
-   Styling :: Css -> IPresentation r -> IPresentation r
+data IPresentation m r where
+   StaticContent :: Html -> IPresentation m ()
+   Resultless :: IPresentation m r -> IPresentation m ()
+   Styling :: Css -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
-               => Container t -> t (IPresentation r) -> IPresentation (t r)
-   Pure :: r -> IPresentation r
-   Deterministic :: (r -> s) -> IPresentation r -> IPresentation s
+               => Container t -> t (IPresentation m r) -> IPresentation m (t r)
+   Pure :: r -> IPresentation m r
+   Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
    Interactive :: Sessionable r
-          => Presentation -> IO r -> IPresentation r
+          => IPresentation m () -> m r -> IPresentation m r
    Dependent :: Sessionable x
-                   => IPresentation x -> (x -> IPresentation r) -> IPresentation r
-instance (r ~ ()) => IsString (IPresentation r) where
+                   => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
+instance (r ~ ()) => IsString (IPresentation m r) where
   fromString = StaticContent . fromString
 
-type Presentation = IPresentation ()
+type Presentation = IPresentation IO ()
 
 mkYesod "Presentation" [parseRoutes|
 / HomeR GET
@@ -98,7 +98,7 @@ getHomeR = do
       let contents = go 0 slide
       toWidget contents
  where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
-                       -> IPresentation r -> WidgetT Presentation IO Presentation
+                       -> IPresentation m r -> WidgetT Presentation IO Presentation
        chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path "" Nothing Nothing (Styling sty conts)
                      = toWidget sty >> chooseSlide path "" Nothing Nothing conts
@@ -155,7 +155,7 @@ getHomeR = do
                  })
                |]
           divClass thisChoice <$> chooseSlide newPath "" Nothing Nothing pres
-       go :: Int -> IPresentation r -> Html
+       go :: Int -> IPresentation m r -> Html
        go _ (StaticContent conts) = conts
        go _ (Pure _) = error $ "Error: impossible to render a slide of an empty presentation."
        go _ (Dependent _ _) = error $ "Internal error: un-selected Dependent option while rendering to HTML."
@@ -179,13 +179,13 @@ getHomeR = do
 
 
 
-instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation r) where
+instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
      = Encaps Simultaneous . goUnion elems₀ 0 $ Map.toList elems₁
    where goUnion :: Sessionable ρ
-               => Map Text (IPresentation ρ) -> Int -> [(Text,IPresentation ρ)]
-                      -> Map Text (IPresentation ρ)
+               => Map Text (IPresentation m ρ) -> Int -> [(Text,IPresentation m ρ)]
+                      -> Map Text (IPresentation m ρ)
          goUnion settled _ []
                         = settled
          goUnion settled iAnonym ((k,e):es)
@@ -206,7 +206,7 @@ instance Monoid Presentation where
 
 
 
-outerConstructorName :: IPresentation r -> String
+outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
@@ -217,18 +217,18 @@ outerConstructorName (Deterministic _ _) = "Deterministic"
 outerConstructorName (Interactive _ _) = "Interactive"
 outerConstructorName (Dependent _ _) = "Dependent"
 
-discardResult :: IPresentation r -> Presentation
+discardResult :: IPresentation m r -> IPresentation m ()
 discardResult (StaticContent c) = StaticContent c
 discardResult (Resultless p) = Resultless p
 discardResult p = Resultless p
 
-instance Functor IPresentation where
+instance Functor (IPresentation m) where
   fmap f (Deterministic g q) = Deterministic (f . g) q
   fmap f (Pure x) = Pure $ f x
   fmap f q = Deterministic f q
-instance Applicative IPresentation where
+instance Applicative (IPresentation m) where
   pure = Pure
-instance Monad IPresentation where
+instance Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
   Resultless p >>= f = Dependent (Resultless p) f
@@ -246,18 +246,18 @@ instance Monad IPresentation where
 infixr 0 ======
 -- | Infix synonym of 'addHeading', with low fixity. Intended to be used
 --   in @do@ blocks, for headings of presentation slides.
-(======) :: Sessionable r => Html -> IPresentation r -> IPresentation r
+(======) :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
 (======) = addHeading
 
-addHeading :: Sessionable r => Html -> IPresentation r -> IPresentation r
+addHeading :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
-divClass :: Sessionable r => Text -> IPresentation r -> IPresentation r
+divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 divClass cn = fmap (Map.!cn) . Encaps Simultaneous . Map.singleton cn
 
 -- | Make a CSS grid, with layout as given in the names matrix.
 infix 9 %##
-(%##) :: Sessionable r => Text -> [[Text]] -> IPresentation r -> IPresentation r
+(%##) :: Sessionable r => Text -> [[Text]] -> IPresentation m r -> IPresentation m r
 cn %## grid = divClass cn . Styling ([lucius|
            div .#{cn} {
              display: grid;
@@ -270,7 +270,7 @@ cn %## grid = divClass cn . Styling ([lucius|
  
 infix 8 #%
 -- | Make this a named grid area.
-(#%) :: Sessionable r => Text -> IPresentation r -> IPresentation r
+(#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 areaName#%Encaps Simultaneous dns
  | [(cn,q)]<-Map.toList dns   = Encaps Simultaneous . Map.singleton cn $ Styling ([lucius|
            div .#{cn} {
@@ -280,13 +280,13 @@ areaName#%Encaps Simultaneous dns
 areaName#%c = fmap (Map.!areaName) $ areaName
                 #% Encaps Simultaneous (Map.singleton areaName c)
 
-styling :: Css -> IPresentation r -> IPresentation r
+styling :: Css -> IPresentation m r -> IPresentation m r
 styling = Styling
 
-staticContent :: Monoid r => Html -> IPresentation r
+staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
 
-vconcat :: (Monoid r, Sessionable r) => [IPresentation r] -> IPresentation r
+vconcat :: (Monoid r, Sessionable r) => [IPresentation m r] -> IPresentation m r
 vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
              . divClass "vertical-concatenation" . Encaps Simultaneous
              . Map.fromList
@@ -303,7 +303,7 @@ postChPosR = do
     if isRevert
      then revertProgress path
      else do
-        let go, go' :: (PrPath, Text) -> [String] -> IPresentation r -> Handler (Maybe r)
+        let go, go' :: (PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
