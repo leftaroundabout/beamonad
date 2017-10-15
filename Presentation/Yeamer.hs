@@ -13,6 +13,7 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ConstraintKinds     #-}
@@ -68,7 +69,8 @@ data IPresentation r where
    StaticContent :: Html -> Presentation
    Resultless :: IPresentation r -> Presentation
    Styling :: Css -> IPresentation r -> IPresentation r
-   Encaps :: Traversable t => Container t -> t (IPresentation r) -> IPresentation (t r)
+   Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
+               => Container t -> t (IPresentation r) -> IPresentation (t r)
    Pure :: r -> IPresentation r
    Deterministic :: (r -> s) -> IPresentation r -> IPresentation s
    Interactive :: Sessionable r
@@ -178,11 +180,14 @@ getHomeR = do
 
 
 
-instance Monoid r => SG.Semigroup (IPresentation r) where
+instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
-     = Encaps Simultaneous . goUnion elems₀ (0::Int) $ Map.toList elems₁
-   where goUnion settled _ []
+     = Encaps Simultaneous . goUnion elems₀ 0 $ Map.toList elems₁
+   where goUnion :: Sessionable ρ
+               => Map Text (IPresentation ρ) -> Int -> [(Text,IPresentation ρ)]
+                      -> Map Text (IPresentation ρ)
+         goUnion settled _ []
                         = settled
          goUnion settled iAnonym ((k,e):es)
           | k `Map.notMember` settled
@@ -198,7 +203,7 @@ instance Monoid r => SG.Semigroup (IPresentation r) where
              [("anonymousCell-0", p), ("anonymousCell-1", q)]
 instance Monoid Presentation where
   mappend = (SG.<>)
-  mempty = Resultless . Encaps Simultaneous $ Map.empty
+  mempty = Resultless $ Encaps Simultaneous (Map.empty :: Map Text Presentation)
 
 
 
@@ -226,18 +231,28 @@ instance Applicative IPresentation where
   pure = Pure
 instance Monad IPresentation where
   return = pure
---  Styling s x >>= f = case x >>= f of
+  StaticContent c >>= f = Dependent (StaticContent c) f
+  Resultless p >>= f = Dependent (Resultless p) f
+  Styling s p >>= f = case p >>= f of
+     Dependent p' f' -> Dependent (Styling s p') f'
+  Encaps (WithHeading h) (Identity p) >>= f = case p >>= f . Identity of
+     Dependent p' f' -> Dependent (Encaps (WithHeading h) $ Identity p') $ f' . runIdentity
+  Encaps Simultaneous ps >>= f = Dependent (Encaps Simultaneous ps) f
+  Pure x >>= f = f x
+  Deterministic g p >>= f = p >>= f . g
+  Interactive p q >>= f = Dependent (Interactive p q) f
+  Dependent p g >>= f = Dependent p $ g >=> f
     
 
-addHeading :: Html -> IPresentation r -> IPresentation r
+addHeading :: Sessionable r => Html -> IPresentation r -> IPresentation r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
-divClass :: Text -> IPresentation r -> IPresentation r
+divClass :: Sessionable r => Text -> IPresentation r -> IPresentation r
 divClass cn = fmap (Map.!cn) . Encaps Simultaneous . Map.singleton cn
 
 -- | Make a CSS grid, with layout as given in the names matrix.
 infix 9 %##
-(%##) :: Text -> [[Text]] -> IPresentation r -> IPresentation r
+(%##) :: Sessionable r => Text -> [[Text]] -> IPresentation r -> IPresentation r
 cn %## grid = divClass cn . Styling ([lucius|
            div .#{cn} {
              display: grid;
@@ -250,15 +265,15 @@ cn %## grid = divClass cn . Styling ([lucius|
  
 infix 8 #%
 -- | Make this a named grid area.
-(#%) :: Text -> IPresentation r -> IPresentation r
-areaName#%Deterministic f q = f <$> areaName #% q
+(#%) :: Sessionable r => Text -> IPresentation r -> IPresentation r
 areaName#%Encaps Simultaneous dns
  | [(cn,q)]<-Map.toList dns   = Encaps Simultaneous . Map.singleton cn $ Styling ([lucius|
            div .#{cn} {
               grid-area: #{areaName}
            }
        |]()) q
-areaName#%c = areaName #% divClass areaName c
+areaName#%c = fmap (Map.!areaName) $ areaName
+                #% Encaps Simultaneous (Map.singleton areaName c)
 
 styling :: Css -> IPresentation r -> IPresentation r
 styling = Styling
@@ -271,7 +286,7 @@ sequential [] = pure mempty
 sequential [slide] = fmap (const mempty) slide
 sequential (slide:slides) = Dependent slide . const $ sequential slides
 
-vconcat :: Monoid r => [IPresentation r] -> IPresentation r
+vconcat :: (Monoid r, Sessionable r) => [IPresentation r] -> IPresentation r
 vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
              . divClass "vertical-concatenation" . Encaps Simultaneous
              . Map.fromList
