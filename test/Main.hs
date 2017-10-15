@@ -29,33 +29,34 @@ main = yeamer . styling ([lucius|
                     display: flex;
                     flex-direction: column;
                   }
-                 |] ()) $
-   sequential
-     [ addHeading "Heading"
-        $ "Simple test “presentation”"
-     , addHeading "Another slide"
-        $ vconcat
-            [ staticContent $ [hamlet|
+                 |] ()) $ do
+
+   "Heading"
+    ======
+    "Simple test “presentation”"
+
+   "Another slide"
+    ======
+    vconcat [ staticContent $ [hamlet|
                  Static text
                  <br>
                  More text
                  <br>
                  More text
                |]()
-            , sequential
-                [ "Click me!"
-                , "You've clicked." ]
-            , sequential
-                [ "No, me!"
-                , "You've clicked." ]
+            , do "Click me!"
+                 "You've clicked."
+            , do "No, me!"
+                 "You've clicked."
             ]
-     , addHeading "A slide with grid layout"
-        $ "slide"%##[["lside","rtop"]
+
+   "A slide with grid layout"
+    ======
+          "slide"%##[["lside","rtop"]
                     ,["lside","rbot"]]
         $  "lside"#%filling 8 "This goes on the left side"
         <> "rtop"#%filling 6 "This goes right on top"
         <> "rbot"#%filling 6 "This goes right down"
-     ]
 
 filling :: Int -> String -> Presentation
 filling n = fromString . concat . replicate n . (++" ")

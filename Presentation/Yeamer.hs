@@ -21,7 +21,7 @@
 module Presentation.Yeamer ( Presentation
                            , staticContent
                            , divClass, (#%), (%##)
-                           , addHeading, vconcat
+                           , addHeading, (======), vconcat
                            , styling
                            , sequential
                            , yeamer ) where
@@ -77,7 +77,7 @@ data IPresentation r where
           => Presentation -> IO r -> IPresentation r
    Dependent :: Sessionable x
                    => IPresentation x -> (x -> IPresentation r) -> IPresentation r
-instance IsString Presentation where
+instance (r ~ ()) => IsString (IPresentation r) where
   fromString = StaticContent . fromString
 
 type Presentation = IPresentation ()
@@ -243,6 +243,12 @@ instance Monad IPresentation where
   Interactive p q >>= f = Dependent (Interactive p q) f
   Dependent p g >>= f = Dependent p $ g >=> f
     
+
+infixr 0 ======
+-- | Infix synonym of 'addHeading', with low fixity. Intended to be used
+--   in @do@ blocks, for headings of presentation slides.
+(======) :: Sessionable r => Html -> IPresentation r -> IPresentation r
+(======) = addHeading
 
 addHeading :: Sessionable r => Html -> IPresentation r -> IPresentation r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
