@@ -8,6 +8,8 @@ import Data.Foldable
 import Data.Semigroup
 import Data.String (fromString)
 
+import Data.Time.Clock
+
 main :: IO ()
 main = yeamer . styling ([lucius|
                   body {
@@ -57,6 +59,10 @@ main = yeamer . styling ([lucius|
         $  "lside"#%filling 8 "This goes on the left side"
         <> "rtop"#%filling 6 "This goes right on top"
         <> "rbot"#%filling 6 "This goes right down"
+   t <- serverSide getCurrentTime
+   "The current time at the server"
+    ======
+     fromString $ show t
 
 filling :: Int -> String -> Presentation
 filling n = fromString . concat . replicate n . (++" ")

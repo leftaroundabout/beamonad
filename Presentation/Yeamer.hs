@@ -16,10 +16,12 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UnicodeSyntax       #-}
 {-# LANGUAGE ConstraintKinds     #-}
 
 module Presentation.Yeamer ( Presentation
-                           , staticContent
+                           , staticContent, serverSide
                            , divClass, (#%), (%##)
                            , addHeading, (======), vconcat
                            , styling
@@ -200,9 +202,9 @@ instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
                SG.<> Encaps Simultaneous (discardResult<$>qs)
   p <> q = fmap fold . Encaps Simultaneous $ Map.fromList
              [("anonymousCell-0", p), ("anonymousCell-1", q)]
-instance Monoid Presentation where
+instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
-  mempty = Resultless $ Encaps Simultaneous (Map.empty :: Map Text Presentation)
+  mempty = Resultless $ Encaps Simultaneous (Map.empty :: Map Text (IPresentation m ()))
 
 
 
@@ -221,6 +223,9 @@ discardResult :: IPresentation m r -> IPresentation m ()
 discardResult (StaticContent c) = StaticContent c
 discardResult (Resultless p) = Resultless p
 discardResult p = Resultless p
+
+serverSide :: Sessionable a => m a -> IPresentation m a
+serverSide = Interactive (pure ())
 
 instance Functor (IPresentation m) where
   fmap f (Deterministic g q) = Deterministic (f . g) q
@@ -241,6 +246,8 @@ instance Monad (IPresentation m) where
   Deterministic g p >>= f = p >>= f . g
   Interactive p q >>= f = Dependent (Interactive p q) f
   Dependent p g >>= f = Dependent p $ g >=> f
+  o >> Interactive (Pure _) q = Interactive (discardResult o) q
+  o >> n = o >>= const n
     
 
 infixr 0 ======
@@ -326,6 +333,7 @@ postChPosR = do
                case key of
                  Just k -> do
                    setProgress path k
+                   skipContentless (crumbh, crumbp<>"1") $ opt k
                    return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
             go (crumbh, crumbp) [] (Dependent _ opt) = do
@@ -349,6 +357,30 @@ postChPosR = do
             go' (crumbh,crumbp) [] p
              | not $ Txt.null crumbp  = go (crumbh<>" div.no"<>crumbp<>"slide", "") [] p
             go' crumbs path p = go crumbs path p
+            skipContentless :: (PrPath, Text) -> IPresentation IO r -> Handler (Maybe r)
+            skipContentless _ (Pure x) = return $ Just x
+            skipContentless crumbs (Interactive p a) = do
+               ll <- skipContentless crumbs p
+               case ll of
+                 Just _ -> Just <$> liftIO a
+                 Nothing -> return Nothing
+            skipContentless (crumbh,crumbp) (Dependent def opt) = do
+               let thisDecision = crumbh <> " div.no"<>crumbp<>"slide"
+               key <- lookupProgress thisDecision
+               case key of
+                 Just k -> skipContentless (crumbh, crumbp<>"1") $ opt k
+                 Nothing -> do
+                    key' <- skipContentless (crumbh, crumbp<>"0") def
+                    case key' of
+                      Just k' -> do
+                        setProgress thisDecision k'
+                        skipContentless (crumbh, crumbp<>"1") $ opt k'
+                      Nothing -> return Nothing
+            skipContentless crumbs (Styling _ c) = skipContentless crumbs c
+            skipContentless crumbs (Deterministic f c)
+                = fmap f <$> skipContentless crumbs c
+            skipContentless _ (StaticContent _) = return Nothing
+            skipContentless _ (Encaps _ _) = return Nothing
         presentation <- getYesod
         go ("","") (finePath <$> Txt.words path) presentation
         return ()
