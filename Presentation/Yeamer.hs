@@ -250,8 +250,8 @@ instance Monad (IPresentation m) where
   o >> n = o >>= const n
     
 
-infixr 0 ======
--- | Infix synonym of 'addHeading', with low fixity. Intended to be used
+infixr 6 ======
+-- | Infix synonym of 'addHeading'. Intended to be used
 --   in @do@ blocks, for headings of presentation slides.
 (======) :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
 (======) = addHeading

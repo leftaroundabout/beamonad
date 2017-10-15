@@ -33,9 +33,11 @@ main = yeamer . styling ([lucius|
                   }
                  |] ()) $ do
 
+
    "Heading"
     ======
     "Simple test “presentation”"
+
 
    "Another slide"
     ======
@@ -52,17 +54,23 @@ main = yeamer . styling ([lucius|
                  "You've clicked."
             ]
 
+
    "A slide with grid layout"
-    ======
-          "slide"%##[["lside","rtop"]
-                    ,["lside","rbot"]]
+    ====== do
+     "slide"%##[["lside","rtop"]
+               ,["lside","rbot"]]
         $  "lside"#%filling 8 "This goes on the left side"
         <> "rtop"#%filling 6 "This goes right on top"
         <> "rbot"#%filling 6 "This goes right down"
+   
+   
    t <- serverSide getCurrentTime
    "The current time at the server"
-    ======
+    ====== do
      fromString $ show t
+
+
+
 
 filling :: Int -> String -> Presentation
 filling n = fromString . concat . replicate n . (++" ")
