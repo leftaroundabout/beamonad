@@ -43,6 +43,7 @@ executable test-presentation
                        , yeamer
                        , shakespeare
                        , semigroups
+                       , numbered-semigroups
                        , time
   hs-source-dirs:      test
   ghc-options:         -rtsopts "-with-rtsopts=-M2G"

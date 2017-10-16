@@ -15,7 +15,9 @@ import Presentation.Yeamer.Internal.Grid
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Test.Tasty.QuickCheck as QC
+import Test.Tasty.QuickCheck (Arbitrary(..))
 
+import Control.Monad
 
 
 main = defaultMain tests
@@ -25,3 +27,11 @@ tests = testGroup "Tests"
  []
 
 
+instance (Arbitrary a) => Arbitrary (Gridded a) where
+  arbitrary = do
+    isLeaf <- arbitrary
+    if isLeaf
+      then GridRegion <$> arbitrary
+      else GridDivisions <$> do
+        [rowspec,colspec] <- replicateM 2 arbitrary
+        forM rowspec $ \() -> forM colspec $ \() -> arbitrary

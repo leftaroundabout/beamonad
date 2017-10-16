@@ -25,7 +25,7 @@ import Control.Applicative (liftA2)
 
 data Gridded a = GridRegion a
                | GridDivisions [[Gridded a]]
-  deriving (Generic, Functor)
+  deriving (Generic, Functor, Eq)
 instance FromJSON a => FromJSON (Gridded a)
 instance ToJSON a => ToJSON (Gridded a)
 
