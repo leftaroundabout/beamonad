@@ -43,6 +43,12 @@ tests = testGroup "Tests"
           pure 2 │ pure 3
           @?= GridDivisions [ [pure 0, pure 1]
                             , [pure 2, pure 3] ]
+     , testCase "Rectangle"
+        $ pure 0 │ pure 1 │ pure 4
+           ──
+          pure 2 │ pure 3 │ pure 5
+          @?= GridDivisions [ [pure 0, pure 1, pure 4]
+                            , [pure 2, pure 3, pure 5] ]
      ]
    , testGroup "JSON consistency"
      [ QC.testProperty "Parsing back structure"
