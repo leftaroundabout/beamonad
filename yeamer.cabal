@@ -65,4 +65,5 @@ test-suite test
     , tasty-hunit
     , tasty-quickcheck
     , yeamer
+    , aeson
 
