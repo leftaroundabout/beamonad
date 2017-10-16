@@ -58,6 +58,32 @@ tests = testGroup "Tests"
           @?= GridDivisions [ [pure 0, pure 1]
                             , [pure 2, pure 3]
                             , [pure 4, pure 5] ]
+     , testCase "Rectangle (built non-sequentially)"
+        $ pure 0 │ pure 1
+           ──
+          pure 2 │ pure 3  ┃  pure 4
+                               ──
+                              pure 5
+          @?= GridDivisions [ [pure 0, pure 1, pure 4]
+                            , [pure 2, pure 3, pure 5] ]
+     , testCase "Nonuniform last row"
+        $ pure 0 │ pure 1 │ pure 2
+           ──
+          pure 3 │ pure 4 │ pure 5
+           ──
+          pure 6     │      pure 7
+          @?= GridDivisions [ [GridDivisions [[pure 0,pure 1,pure 2]]]
+                            , [GridDivisions [[pure 3,pure 4,pure 5]]]
+                            , [GridDivisions [[pure 6   ,    pure 7]]] ]
+     , testCase "Nonuniform first row"
+        $ pure 0 │ pure 1 │ pure 2
+           ──
+          pure 3     │      pure 5
+           ──
+          pure 6     │      pure 7
+          @?= GridDivisions [[GridDivisions [[pure 0,pure 1,pure 2]]]
+                            ,[GridDivisions [[pure 3   ,    pure 5]
+                                            ,[pure 6   ,    pure 7]]]]
      ]
    , testGroup "JSON consistency"
      [ QC.testProperty "Parsing back structure"
