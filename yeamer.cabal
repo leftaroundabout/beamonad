@@ -18,6 +18,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Presentation.Yeamer
+                       Presentation.Yeamer.Internal.Grid
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9
@@ -26,6 +27,7 @@ library
                        , shakespeare
                        , blaze-html
                        , semigroups
+                       , numbered-semigroups >=0.1 && <0.2
                        , containers
                        , text 
                        , bytestring 
