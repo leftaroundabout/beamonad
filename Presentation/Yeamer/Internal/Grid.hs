@@ -49,5 +49,7 @@ instance SemigroupNo 0 (Gridded a) where
 instance SemigroupNo 1 (Gridded a) where
   sappendN _ (GridDivisions g@(l:_)) (GridDivisions h@(m:_)) | length l == length m
         = GridDivisions $ g++h
+  sappendN _ e (GridDivisions c@([r]:_)) = GridDivisions $ [e]:c
+  sappendN _ (GridDivisions c@([r]:_)) e = GridDivisions $ c++[[e]]
   sappendN p a b = GridDivisions [[a],[b]]
   
