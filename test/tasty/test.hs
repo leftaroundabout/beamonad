@@ -11,6 +11,7 @@
 module Main where
 
 import Presentation.Yeamer.Internal.Grid
+import Data.Semigroup.Numbered
 
 import qualified Data.Aeson as JSON
 
@@ -26,10 +27,31 @@ main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Tests"
- [ testGroup "JSON consistency"
-   [ QC.testProperty "Parsing back structure"
-      $ \g -> JSON.decode (JSON.encode g)
-              == Just (g :: Gridded ())
+ [ testGroup "Grids"
+   [ testGroup "Concatenation"
+     [ testCase "Singletons, horizontal"
+        $ pure 0 │ pure 1
+           @?= GridDivisions [ [pure 0, pure 1] ]
+     , testCase "Singletons, vertical"
+        $ pure 1
+            ──
+          pure 2 @?= GridDivisions [ [pure 1]
+                                   , [pure 2] ]
+     , testCase "Quadrat"
+        $ pure 0 │ pure 1
+           ──
+          pure 2 │ pure 3
+          @?= GridDivisions [ [pure 0, pure 1]
+                            , [pure 2, pure 3] ]
+     ]
+   , testGroup "JSON consistency"
+     [ QC.testProperty "Parsing back structure"
+        $ \g -> JSON.decode (JSON.encode g)
+                == Just (g :: Gridded ())
+     , QC.testProperty "Parsing back structure and values"
+        $ \g -> JSON.decode (JSON.encode g)
+                == Just (g :: Gridded Int)
+     ]
    ]
  ]
 

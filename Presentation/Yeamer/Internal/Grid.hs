@@ -42,10 +42,10 @@ instance Monad Gridded where
 instance SemigroupNo 0 (Gridded a) where
   sappendN _ (GridDivisions g) (GridDivisions h) | length g == length h
         = GridDivisions $ zipWith (++) g h
-  sappendN p a b = sappendN p (GridDivisions [[a,b]]) b
+  sappendN p a b = GridDivisions [[a,b]]
 
 instance SemigroupNo 1 (Gridded a) where
   sappendN _ (GridDivisions g@(l:_)) (GridDivisions h@(m:_)) | length l == length m
         = GridDivisions $ g++h
-  sappendN p a b = sappendN p (GridDivisions [[a],[b]]) b
+  sappendN p a b = GridDivisions [[a],[b]]
   
