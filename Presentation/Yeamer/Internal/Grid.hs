@@ -11,6 +11,7 @@
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell       #-}
 
@@ -76,8 +77,18 @@ makeLenses ''GridLayout
 layoutGrid :: Gridded a -> GridLayout a
 layoutGrid (GridRegion a) = GridLayout 1 1 [(GridRange 0 1 0 1, a)]
 layoutGrid (GridDivisions []) = GridLayout 0 0 []
-layoutGrid (GridDivisions [row]) = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0))))
-                                                  $ xcat 0 subLayouts
+layoutGrid (GridDivisions [row])
+    = alignLayoutDirectional gridWidth xBegin xEnd
+                             gridHeight yBegin yEnd
+                        $ layoutGrid <$> row
+alignLayoutDirectional
+    :: Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int
+    -> Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int
+    -> [GridLayout a] -> GridLayout a
+alignLayoutDirectional gridWidth xBegin xEnd
+                       gridHeight yBegin yEnd
+                           = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0))))
+                                                  . xcat 0
  where align state = case sortBy (comparing $ snd . fst) state of
            (headSnail@((_,ySnail), _) : others)
              | ySnail < 1
@@ -97,7 +108,6 @@ layoutGrid (GridDivisions [row]) = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0)
             , i+1 )
         where shift j | j>i        = j+1
                       | otherwise  = j
-       subLayouts = layoutGrid <$> row
        xcat _ [] = []
        xcat ix (ζ : cells)
           = ( ζ & gridContents . mapped . _1 %~ (xBegin %~(+ix))
