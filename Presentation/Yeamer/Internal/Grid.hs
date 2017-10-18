@@ -99,8 +99,8 @@ layoutGrid (GridDivisions [row]) = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0)
        subLayouts = layoutGrid <$> row
        xcat _ [] = []
        xcat ix (GridLayout w h conts : cells)
-          = (GridLayout w h ( conts & mapped . _1 %~ (xBegin %~(+w))
-                                                   . (xEnd %~(+w)) ), 1%h)
+          = (GridLayout w h ( conts & mapped . _1 %~ (xBegin %~(+ix))
+                                                   . (xEnd %~(+ix))  ), 1%h)
               : xcat (ix+w) cells
        gather [GridLayout w h conts] = GridLayout w h conts
        gather (GridLayout w₀ h₀ conts₀ : others) = case gather others of
