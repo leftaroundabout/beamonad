@@ -89,20 +89,23 @@ layoutGrid (GridDivisions [row]) = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0)
                          ++ [ ((ySnail,yHare), (h', shiftup cH))
                             | ((_,yHare), (h', cH)) <- hares ]
            _   -> gather $ fst . snd . snd <$> state
-       shiftup (GridLayout w h conts, i)
-          = ( GridLayout w (h+1) [ (range & yBegin%~shift
-                                          & yEnd%~shift  , a)
-                                 | (range, a) <- conts ]
+       shiftup (ζ, i)
+          = ( ζ & gridHeight %~ (+1)
+                & gridContents . mapped
+                         %~ \(range, a) -> (range & yBegin%~shift
+                                                  & yEnd%~shift  , a)
             , i+1 )
         where shift j | j>i        = j+1
                       | otherwise  = j
        subLayouts = layoutGrid <$> row
        xcat _ [] = []
-       xcat ix (GridLayout w h conts : cells)
-          = (GridLayout w h ( conts & mapped . _1 %~ (xBegin %~(+ix))
-                                                   . (xEnd %~(+ix))  ), 1%h)
-              : xcat (ix+w) cells
-       gather [GridLayout w h conts] = GridLayout w h conts
-       gather (GridLayout w₀ h₀ conts₀ : others) = case gather others of
-               GridLayout wo ho contso
-                | h₀ == ho  -> GridLayout (w₀+wo) ho (conts₀++contso)
+       xcat ix (ζ : cells)
+          = ( ζ & gridContents . mapped . _1 %~ (xBegin %~(+ix))
+                                              . (xEnd %~(+ix))
+            , 1%(ζ^.gridHeight) )
+              : xcat (ix + ζ^.gridWidth) cells
+       gather [ζ] = ζ
+       gather (ζ₀ : others) = case gather others of
+               ζo | ζ₀^.gridHeight == ζo^.gridHeight
+                    -> ζo & gridWidth %~ (ζ₀^.gridWidth +)
+                          & gridContents %~ (ζ₀^.gridContents ++)
