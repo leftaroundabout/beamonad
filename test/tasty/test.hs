@@ -44,23 +44,32 @@ tests = testGroup "Tests"
         $ pure 0 │ pure 1
            ──
           pure 2 │ pure 3
-          @?= GridDivisions [ [pure 0, pure 1]
-                            , [pure 2, pure 3] ]
+           =#?@= ( GridDivisions [ [pure 0, pure 1]
+                                 , [pure 2, pure 3] ]
+                 , GridLayout 2 2 [ (GridRange 0 1 0 1, 0), (GridRange 1 2 0 1, 1)
+                                  , (GridRange 0 1 1 2, 2), (GridRange 1 2 1 2, 3) ] )
      , testCase "Rectangle, landscape"
         $ pure 0 │ pure 1 │ pure 4
            ──
           pure 2 │ pure 3 │ pure 5
-          @?= GridDivisions [ [pure 0, pure 1, pure 4]
-                            , [pure 2, pure 3, pure 5] ]
+           =#?@= ( GridDivisions [ [pure 0, pure 1, pure 4]
+                                 , [pure 2, pure 3, pure 5] ]
+                 , GridLayout 3 2
+                   [ (GridRange 0 1 0 1, 0), (GridRange 1 2 0 1, 1), (GridRange 2 3 0 1, 4)
+                   , (GridRange 0 1 1 2, 2), (GridRange 1 2 1 2, 3), (GridRange 2 3 1 2, 5) ] )
      , testCase "Rectangle, portrait"
         $ pure 0 │ pure 1
            ──
           pure 2 │ pure 3
            ──
           pure 4 │ pure 5
-          @?= GridDivisions [ [pure 0, pure 1]
-                            , [pure 2, pure 3]
-                            , [pure 4, pure 5] ]
+           =#?@= ( GridDivisions [ [pure 0, pure 1]
+                                 , [pure 2, pure 3]
+                                 , [pure 4, pure 5] ]
+                 , GridLayout 2 3
+                   [ (GridRange 0 1 0 1, 0), (GridRange 1 2 0 1, 1)
+                   , (GridRange 0 1 1 2, 2), (GridRange 1 2 1 2, 3)
+                   , (GridRange 0 1 2 3, 4), (GridRange 1 2 2 3, 5) ] )
      , testCase "Rectangle (built non-sequentially)"
         $ pure 0 │ pure 1
            ──
@@ -75,18 +84,26 @@ tests = testGroup "Tests"
           pure 3 │ pure 4 │ pure 5
            ──
           pure 6     │      pure 7
-          @?= GridDivisions [ [GridDivisions [[pure 0,pure 1,pure 2]]]
-                            , [GridDivisions [[pure 3,pure 4,pure 5]]]
-                            , [GridDivisions [[pure 6   ,    pure 7]]] ]
+           =#?@= ( GridDivisions [ [GridDivisions [[pure 0,pure 1,pure 2]]]
+                                 , [GridDivisions [[pure 3,pure 4,pure 5]]]
+                                 , [GridDivisions [[pure 6   ,    pure 7]]] ]
+                 , GridLayout 4 3
+                   [ (GridRange 0 1 0 1, 0), (GridRange 1 3 0 1, 1), (GridRange 3 4 0 1, 2)
+                   , (GridRange 0 1 1 2, 3), (GridRange 1 3 1 2, 4), (GridRange 3 4 1 2, 5)
+                   ,        (GridRange 0 2 2 3, 6),         (GridRange 2 4 2 3, 7)          ] )
      , testCase "Nonuniform first row"
         $ pure 0 │ pure 1 │ pure 2
            ──
           pure 3     │      pure 5
            ──
           pure 6     │      pure 7
-          @?= GridDivisions [[GridDivisions [[pure 0,pure 1,pure 2]]]
-                            ,[GridDivisions [[pure 3   ,    pure 5]
-                                            ,[pure 6   ,    pure 7]]]]
+           =#?@= (GridDivisions [[GridDivisions [[pure 0,pure 1,pure 2]]]
+                                ,[GridDivisions [[pure 3   ,    pure 5]
+                                                ,[pure 6   ,    pure 7]]]]
+                 , GridLayout 4 3
+                   [ (GridRange 0 1 0 1, 0), (GridRange 1 3 0 1, 1), (GridRange 3 4 0 1, 2)
+                   ,        (GridRange 0 2 1 2, 3),         (GridRange 2 4 1 2, 5)
+                   ,        (GridRange 0 2 2 3, 6),         (GridRange 2 4 2 3, 7)          ] )
      ]
    , testGroup "JSON consistency"
      [ QC.testProperty "Parsing back structure"
