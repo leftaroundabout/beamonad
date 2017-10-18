@@ -61,7 +61,7 @@ instance JSON.FromJSON PositionChange
 
 data Container t where
   WithHeading :: Html -> Container Identity
-  Simultaneous :: Container (Map Text)
+  ManualDivs :: Container (Map Text)
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
 type Sessionable r = (ToJSON r, FromJSON r)
@@ -104,8 +104,8 @@ getHomeR = do
        chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path "" Nothing Nothing (Styling sty conts)
                      = toWidget sty >> chooseSlide path "" Nothing Nothing conts
-       chooseSlide path "" Nothing Nothing (Encaps Simultaneous conts)
-           = discardResult . Encaps Simultaneous
+       chooseSlide path "" Nothing Nothing (Encaps ManualDivs conts)
+           = discardResult . Encaps ManualDivs
                <$> (`Map.traverseWithKey`conts) `id` \i cell ->
                  chooseSlide (path<>" div."<>i) "" Nothing Nothing cell
        chooseSlide path "" Nothing Nothing (Encaps f conts)
@@ -172,7 +172,7 @@ getHomeR = do
                                     -> HTM.div HTM.! HTM.class_ "headed-container"
                                          $ hh h <> contsr
                                  ) conts
-       go lvl (Encaps Simultaneous conts)
+       go lvl (Encaps ManualDivs conts)
            = go lvl $ Encaps (CustomEncapsulation $ \contsrs
                   -> foldMap (\(i,c) -> [hamlet| <div class=#{i}> #{c} |]() )
                       $ Map.toAscList contsrs
@@ -183,8 +183,8 @@ getHomeR = do
 
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
-  Encaps Simultaneous elems₀ <> Encaps Simultaneous elems₁
-     = Encaps Simultaneous . goUnion elems₀ 0 $ Map.toList elems₁
+  Encaps ManualDivs elems₀ <> Encaps ManualDivs elems₁
+     = Encaps ManualDivs . goUnion elems₀ 0 $ Map.toList elems₁
    where goUnion :: Sessionable ρ
                => Map Text (IPresentation m ρ) -> Int -> [(Text,IPresentation m ρ)]
                       -> Map Text (IPresentation m ρ)
@@ -197,14 +197,14 @@ instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
           , k'`Map.notMember` settled
                         = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
          goUnion s i es = goUnion s (i+1) es
-  Resultless (Encaps Simultaneous ps) <> Resultless (Encaps Simultaneous qs)
-      = Resultless $ Encaps Simultaneous (discardResult<$>ps)
-               SG.<> Encaps Simultaneous (discardResult<$>qs)
-  p <> q = fmap fold . Encaps Simultaneous $ Map.fromList
+  Resultless (Encaps ManualDivs ps) <> Resultless (Encaps ManualDivs qs)
+      = Resultless $ Encaps ManualDivs (discardResult<$>ps)
+               SG.<> Encaps ManualDivs (discardResult<$>qs)
+  p <> q = fmap fold . Encaps ManualDivs $ Map.fromList
              [("anonymousCell-0", p), ("anonymousCell-1", q)]
 instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
-  mempty = Resultless $ Encaps Simultaneous (Map.empty :: Map Text (IPresentation m ()))
+  mempty = Resultless $ Encaps ManualDivs (Map.empty :: Map Text (IPresentation m ()))
 
 
 
@@ -213,7 +213,7 @@ outerConstructorName (StaticContent _) = "StaticContent"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
 outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
-outerConstructorName (Encaps Simultaneous _) = "Encaps Simultaneous"
+outerConstructorName (Encaps ManualDivs _) = "Encaps ManualDivs"
 outerConstructorName (Pure _) = "Pure"
 outerConstructorName (Deterministic _ _) = "Deterministic"
 outerConstructorName (Interactive _ _) = "Interactive"
@@ -241,7 +241,7 @@ instance Monad (IPresentation m) where
      Dependent p' f' -> Dependent (Styling s p') f'
   Encaps (WithHeading h) (Identity p) >>= f = case p >>= f . Identity of
      Dependent p' f' -> Dependent (Encaps (WithHeading h) $ Identity p') $ f' . runIdentity
-  Encaps Simultaneous ps >>= f = Dependent (Encaps Simultaneous ps) f
+  Encaps ManualDivs ps >>= f = Dependent (Encaps ManualDivs ps) f
   Pure x >>= f = f x
   Deterministic g p >>= f = p >>= f . g
   Interactive p q >>= f = Dependent (Interactive p q) f
@@ -260,7 +260,7 @@ addHeading :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
 divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-divClass cn = fmap (Map.!cn) . Encaps Simultaneous . Map.singleton cn
+divClass cn = fmap (Map.!cn) . Encaps ManualDivs . Map.singleton cn
 
 -- | Make a CSS grid, with layout as given in the names matrix.
 infix 9 %##
@@ -278,14 +278,14 @@ cn %## grid = divClass cn . Styling ([lucius|
 infix 8 #%
 -- | Make this a named grid area.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-areaName#%Encaps Simultaneous dns
- | [(cn,q)]<-Map.toList dns   = Encaps Simultaneous . Map.singleton cn $ Styling ([lucius|
+areaName#%Encaps ManualDivs dns
+ | [(cn,q)]<-Map.toList dns   = Encaps ManualDivs . Map.singleton cn $ Styling ([lucius|
            div .#{cn} {
               grid-area: #{areaName}
            }
        |]()) q
 areaName#%c = fmap (Map.!areaName) $ areaName
-                #% Encaps Simultaneous (Map.singleton areaName c)
+                #% Encaps ManualDivs (Map.singleton areaName c)
 
 styling :: Css -> IPresentation m r -> IPresentation m r
 styling = Styling
@@ -295,7 +295,7 @@ staticContent = fmap (const mempty) . StaticContent
 
 vconcat :: (Monoid r, Sessionable r) => [IPresentation m r] -> IPresentation m r
 vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
-             . divClass "vertical-concatenation" . Encaps Simultaneous
+             . divClass "vertical-concatenation" . Encaps ManualDivs
              . Map.fromList
              $ zipWith (\i c -> ("vConcat-item"<>i, c)) indices l
  where indices = showIndex <$> [0 .. ll-1]
@@ -316,7 +316,7 @@ postChPosR = do
             go _ [] (Interactive _ q) = Just <$> liftIO q
             go crumbs path (Encaps (WithHeading _) (Identity cont))
                 = fmap Identity <$> go crumbs path cont
-            go (crumbh,crumbp) [] (Encaps Simultaneous conts)
+            go (crumbh,crumbp) [] (Encaps ManualDivs conts)
                 = sequence <$> Map.traverseWithKey
                      (\divid -> go (crumbh<>" div."<>divid, crumbp) []) conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
@@ -344,7 +344,7 @@ postChPosR = do
             go _ (dir:_) (Dependent _ _)
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
-            go (crumbh, _) (divid:path) (Encaps Simultaneous conts)
+            go (crumbh, _) (divid:path) (Encaps ManualDivs conts)
               | Just dividt <- Txt.stripPrefix "div." $ Txt.pack divid
               , Just subSel <- Map.lookup dividt conts
                    = fmap (Map.singleton dividt) <$> go (crumbh, "") path subSel
