@@ -81,6 +81,11 @@ layoutGrid (GridDivisions [row])
     = alignLayoutDirectional gridWidth xBegin xEnd
                              gridHeight yBegin yEnd
                         $ layoutGrid <$> row
+layoutGrid (GridDivisions rows)
+    = alignLayoutDirectional gridHeight yBegin yEnd
+                             gridWidth xBegin xEnd
+                        $ layoutGrid . GridDivisions . pure <$> rows
+
 alignLayoutDirectional
     :: Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int
     -> Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int

@@ -36,8 +36,10 @@ tests = testGroup "Tests"
      , testCase "Singletons, vertical"
         $ pure 1
             ──
-          pure 2 @?= GridDivisions [ [pure 1]
-                                   , [pure 2] ]
+          pure 2
+           =#?@= ( GridDivisions [ [pure 1]
+                                 , [pure 2] ]
+                 , GridLayout 1 2 [(GridRange 0 1 0 1, 1), (GridRange 0 1 1 2, 2)] )
      , testCase "Quadrat"
         $ pure 0 │ pure 1
            ──
