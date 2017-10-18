@@ -12,6 +12,7 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module Presentation.Yeamer.Internal.Grid where
 
@@ -21,7 +22,15 @@ import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
 
+import Data.Ratio ((%))
+
+import Data.List (sortBy)
+import Data.Ord (comparing)
+
 import Control.Applicative (liftA2)
+
+import Lens.Micro
+import Lens.Micro.TH
 
 data Gridded a = GridRegion a
                | GridDivisions [[Gridded a]]
@@ -31,7 +40,7 @@ instance ToJSON a => ToJSON (Gridded a)
 
 instance Applicative Gridded where
   pure = GridRegion
-  fs <*> GridRegion x = ($x) <$> fs
+  fs <*> GridRegion x = ($ x) <$> fs
   GridRegion f <*> xs = f <$> xs
   GridDivisions fs <*> GridDivisions xs = GridDivisions $ liftA2 (<*>) <$> fs <*> xs
 instance Monad Gridded where
@@ -53,3 +62,47 @@ instance SemigroupNo 1 (Gridded a) where
   sappendN _ (GridDivisions c@([r]:_)) e = GridDivisions $ c++[[e]]
   sappendN p a b = GridDivisions [[a],[b]]
   
+
+data GridRange = GridRange {
+      _xBegin, _xEnd, _yBegin, _yEnd :: Int }
+   deriving (Eq, Show, Generic)
+makeLenses ''GridRange
+data GridLayout a = GridLayout {
+      _gridWidth, _gridHeight :: Int
+    , _gridContents :: [(GridRange, a)]
+    } deriving (Functor, Generic, Eq, Show)
+makeLenses ''GridLayout
+
+layoutGrid :: Gridded a -> GridLayout a
+layoutGrid (GridRegion a) = GridLayout 1 1 [(GridRange 0 1 0 1, a)]
+layoutGrid (GridDivisions []) = GridLayout 0 0 []
+layoutGrid (GridDivisions [row]) = align . map (\(ζ, h') -> ((0,h'), (h',(ζ,0))))
+                                                  $ xcat 0 subLayouts
+ where align state = case sortBy (comparing $ snd . fst) state of
+           (headSnail@((_,ySnail), _) : others)
+             | ySnail < 1
+               -> case break ((>ySnail) . snd . fst) others of
+                    (snails, hares)
+                      -> align $
+                            [ ((ySnail, ySnail+h'), (h', (ζ,i+1)))
+                            | (_, (h', (ζ,i))) <- headSnail : snails ]
+                         ++ [ ((ySnail,yHare), (h', shiftup cH))
+                            | ((_,yHare), (h', cH)) <- hares ]
+           _   -> gather $ fst . snd . snd <$> state
+       shiftup (GridLayout w h conts, i)
+          = ( GridLayout w (h+1) [ (range & yBegin%~shift
+                                          & yEnd%~shift  , a)
+                                 | (range, a) <- conts ]
+            , i+1 )
+        where shift j | j>i        = j+1
+                      | otherwise  = j
+       subLayouts = layoutGrid <$> row
+       xcat _ [] = []
+       xcat ix (GridLayout w h conts : cells)
+          = (GridLayout w h ( conts & mapped . _1 %~ (xBegin %~(+w))
+                                                   . (xEnd %~(+w)) ), 1%h)
+              : xcat (ix+w) cells
+       gather [GridLayout w h conts] = GridLayout w h conts
+       gather (GridLayout w₀ h₀ conts₀ : others) = case gather others of
+               GridLayout wo ho contso
+                | h₀ == ho  -> GridLayout (w₀+wo) ho (conts₀++contso)
