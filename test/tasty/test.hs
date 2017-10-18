@@ -31,7 +31,8 @@ tests = testGroup "Tests"
    [ testGroup "Concatenation"
      [ testCase "Singletons, horizontal"
         $ pure 0 │ pure 1
-           @?= GridDivisions [ [pure 0, pure 1] ]
+           =#?@= ( GridDivisions [ [pure 0, pure 1] ]
+                 , GridLayout 2 1 [(GridRange 0 1 0 1, 0), (GridRange 1 2 0 1, 1)] )
      , testCase "Singletons, vertical"
         $ pure 1
             ──
@@ -125,3 +126,8 @@ instance (Arbitrary a) => Arbitrary (Gridded a) where
                 splitEach _ [] = []
                 splitEach n l = case splitAt n l of
                    (portion,rest) -> portion : splitEach n rest
+
+
+infix 1 =#?@=
+(=#?@=) :: (Eq a, Show a) => Gridded a -> (Gridded a, GridLayout a) -> Assertion
+a =#?@= b = (a, layoutGrid a) @?= b
