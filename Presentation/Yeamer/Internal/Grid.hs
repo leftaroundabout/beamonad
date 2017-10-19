@@ -29,6 +29,7 @@ import Data.List (sortBy)
 import Data.Ord (comparing)
 
 import Control.Applicative (liftA2)
+import Control.Arrow (second)
 
 import Lens.Micro
 import Lens.Micro.TH
@@ -75,6 +76,15 @@ data GridLayout a = GridLayout {
 makeLenses ''GridLayout
 
 layoutGrid :: Gridded a -> GridLayout a
+-- layoutGrid = fmap snd . fst . layoutGridP
+
+type GridRegionId = Int
+
+layoutGridP :: Gridded a -> ( GridLayout (GridRegionId, a)
+                            , [(GridRegionId, b)] -> Gridded b )
+layoutGridP g = ( layoutGrid g & gridContents %~ zipWith (second . (,)) [0..]
+                , const undefined )
+
 layoutGrid (GridRegion a) = GridLayout 1 1 [(GridRange 0 1 0 1, a)]
 layoutGrid (GridDivisions []) = GridLayout 0 0 []
 layoutGrid (GridDivisions [row])
