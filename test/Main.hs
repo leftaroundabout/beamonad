@@ -8,6 +8,7 @@ import Data.Foldable
 import Data.Semigroup
 import Data.Semigroup.Numbered
 import Data.String (fromString)
+import Data.Function (fix)
 
 import Data.Time.Clock
 
@@ -78,11 +79,11 @@ main = yeamer . styling ([lucius|
        "blum"   │  "blubb"
 
 
-   let hydra = "head" >>= \()->  hydra │ hydra
-                                 ──
-                                 hydra │ hydra
    "Hydra"
-    ====== hydra
+    ======
+    fix (\h -> "head" >>= \() -> h │ h
+                                 ──
+                                 h │ h )
 
 
 
