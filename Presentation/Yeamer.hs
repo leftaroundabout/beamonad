@@ -402,9 +402,13 @@ postChPosR = do
             go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
             go (crumbh, crumbp) (('0':prog):path') (Dependent def _)
                 = const Nothing <$> go' (crumbh, crumbp<>"0") (prog:path') def
-            go (crumbh, crumbp) (('1':prog):path') (Dependent _ opt) = do
-               Just key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
-               go' (crumbh, crumbp<>"1") (prog:path') $ opt key
+            go (crumbh, crumbp) (('1':prog):path') (Dependent def opt) = do
+               key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
+               case key of
+                 Just k -> go' (crumbh, crumbp<>"1") (prog:path') $ opt k
+                 Nothing -> do
+                   Just k <- go' (crumbh, crumbp<>"0") [] def
+                   go' (crumbh, crumbp<>"1") (prog:path') $ opt k
             go (crumbh,crumbp) [[]] (Dependent def opt) = do
                key <- go' (crumbh,crumbp<>"0") [[]] def
                case key of
