@@ -39,6 +39,7 @@ import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
@@ -62,6 +63,7 @@ instance JSON.FromJSON PositionChange
 data Container t where
   WithHeading :: Html -> Container Identity
   ManualDivs :: Container (Map Text)
+  GriddedBlocks :: Container Gridded
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
 type Sessionable r = (ToJSON r, FromJSON r)
@@ -90,6 +92,23 @@ mkYesod "Presentation" [parseRoutes|
 |]
 instance Yesod Presentation
 instance YesodJquery Presentation
+
+
+preprocPres :: IPresentation m r -> IPresentation m r
+preprocPres (StaticContent c) = StaticContent c
+preprocPres (Resultless p) = Resultless $ preprocPres p
+preprocPres (Styling s p) = Styling s $ preprocPres p
+preprocPres (Encaps (WithHeading h) p) = Encaps (WithHeading h) $ preprocPres<$>p
+preprocPres (Encaps ManualDivs p) = Encaps ManualDivs $ preprocPres<$>p
+preprocPres (Encaps (CustomEncapsulation f) p)
+               = Encaps (CustomEncapsulation f) $ preprocPres<$>p
+preprocPres (Encaps GriddedBlocks p) = undefined
+preprocPres (Pure x) = Pure x
+preprocPres (Deterministic f p) = Deterministic f $ preprocPres p
+preprocPres (Interactive p a) = Interactive (preprocPres p) a
+preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
+
+
 
 getHomeR :: Handler Html
 getHomeR = do
@@ -417,4 +436,4 @@ revertProgress path = do
         deleteSession skipOrigKey
 
 yeamer :: Presentation -> IO ()
-yeamer = warp 14910
+yeamer = warp 14910 . preprocPres
