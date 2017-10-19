@@ -77,7 +77,7 @@ type Sessionable r = (ToJSON r, FromJSON r)
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    Resultless :: IPresentation m r -> IPresentation m ()
-   Styling :: Css -> IPresentation m r -> IPresentation m r
+   Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
                => Container t -> t (IPresentation m r) -> IPresentation m (t r)
    Pure :: r -> IPresentation m r
@@ -114,11 +114,11 @@ preprocPres (Encaps GriddedBlocks p)
            . fmap (backonstruct . map (first $ read . Txt.unpack) . Map.toList)
            $ Encaps ManualDivs layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p
-       layouted = Map.fromList $ first (("autogrid-range_"<>) . Txt.pack . idc) . snd <$> prelayed
-       gridRep :: [[Char]]
-       gridRep = foldr fill (replicate h $ replicate w '.') prelayed
+       layouted = Map.fromList $ first (("autogrid-range_"<>) . idc) . snd <$> prelayed
+       gridRep :: [[Text]]
+       gridRep = foldr fill (replicate h $ replicate w ".") prelayed
         where fill (GridRange xb xe yb ye, (i, _)) field
-                 = yPre ++ [ xPre ++ (idc i<*xRel) ++ xPost
+                 = yPre ++ [ xPre ++ (idc i<$xRel) ++ xPost
                            | xAll <- yRel
                            , let (xPre, (xRel, xPost)) = splitAt xb xAll
                                                & second (splitAt $ xe-xb) ] ++ yPost
@@ -126,13 +126,21 @@ preprocPres (Encaps GriddedBlocks p)
                                    & second (splitAt $ ye-yb)
        idc i
         | c <- toEnum $ fromEnum 'a' + i
-        , c <= 'z'                        = [c]
-       gridClass = "autogrid_"<>Txt.intercalate "-" (Txt.pack<$>gridRep)
+        , c <= 'z'                        = Txt.singleton c
+       gridClass = "autogrid_"<>Txt.intercalate "-" (Txt.concat<$>gridRep)
        grids = [lucius|
                  div .#{gridClass} {
                     display: grid;
+                    grid-template-areas: #{areas}
                  }
                |]()
+             : [ [lucius| div .#{divid} { grid-area: #{ist} } |]()
+               | (_, (i, _)) <- prelayed
+               , let ist = idc i
+                     divid = "autogrid-range_" <> ist ]
+        where areas = fold ["\""<>Txt.intercalate " " line<>"\" "
+                           | line <- gridRep ]
+
 preprocPres (Pure x) = Pure x
 preprocPres (Deterministic f p) = Deterministic f $ preprocPres p
 preprocPres (Interactive p a) = Interactive (preprocPres p) a
@@ -152,7 +160,7 @@ getHomeR = do
                        -> IPresentation m r -> WidgetT Presentation IO Presentation
        chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path "" Nothing Nothing (Styling sty conts)
-                     = toWidget sty >> chooseSlide path "" Nothing Nothing conts
+                     = mapM_ toWidget sty >> chooseSlide path "" Nothing Nothing conts
        chooseSlide path "" Nothing Nothing (Encaps ManualDivs conts)
            = discardResult . Encaps ManualDivs
                <$> (`Map.traverseWithKey`conts) `id` \i cell ->
@@ -331,13 +339,13 @@ divClass cn = fmap (Map.!cn) . Encaps ManualDivs . Map.singleton cn
 -- | Make a CSS grid, with layout as given in the names matrix.
 infix 9 %##
 (%##) :: Sessionable r => Text -> [[Text]] -> IPresentation m r -> IPresentation m r
-cn %## grid = divClass cn . Styling ([lucius|
+cn %## grid = divClass cn . Styling [[lucius|
            div .#{cn} {
              display: grid;
              grid-template-areas: #{areas};
              grid-area: #{cn};
            }
-        |]())
+        |]()]
  where areas = fold ["\""<>Txt.intercalate " " line<>"\" "
                     | line <- grid ]
  
@@ -345,16 +353,16 @@ infix 8 #%
 -- | Make this a named grid area.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 areaName#%Encaps ManualDivs dns
- | [(cn,q)]<-Map.toList dns   = Encaps ManualDivs . Map.singleton cn $ Styling ([lucius|
+ | [(cn,q)]<-Map.toList dns   = Encaps ManualDivs . Map.singleton cn $ Styling [[lucius|
            div .#{cn} {
               grid-area: #{areaName}
            }
-       |]()) q
+       |]()] q
 areaName#%c = fmap (Map.!areaName) $ areaName
                 #% Encaps ManualDivs (Map.singleton areaName c)
 
 styling :: Css -> IPresentation m r -> IPresentation m r
-styling = Styling
+styling = Styling . pure
 
 staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
