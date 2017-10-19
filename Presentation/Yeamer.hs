@@ -50,6 +50,9 @@ import Data.Monoid
 import Data.Maybe
 import Data.Functor.Identity
 import Control.Monad
+import Control.Arrow (first, second)
+
+import Data.Function ((&))
 
 import GHC.Generics
 
@@ -101,8 +104,32 @@ preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) p) = Encaps (WithHeading h) $ preprocPres<$>p
 preprocPres (Encaps ManualDivs p) = Encaps ManualDivs $ preprocPres<$>p
 preprocPres (Encaps (CustomEncapsulation f) p)
-               = Encaps (CustomEncapsulation f) $ preprocPres<$>p
-preprocPres (Encaps GriddedBlocks p) = undefined
+                = Encaps (CustomEncapsulation f) $ preprocPres<$>p
+preprocPres (Encaps GriddedBlocks p)
+           = Styling grids
+           . divClass gridClass
+           . fmap (backonstruct . map (first $ read . Txt.unpack) . Map.toList)
+           $ Encaps ManualDivs layouted
+ where (GridLayout w h prelayed, backonstruct) = layoutGridP p
+       layouted = Map.fromList $ first (("autogrid-range_"<>) . Txt.pack . idc) . snd <$> prelayed
+       gridRep :: [[Char]]
+       gridRep = foldr fill (replicate h $ replicate w '.') prelayed
+        where fill (GridRange xb xe yb ye, (i, _)) field
+                 = yPre ++ [ xPre ++ (idc i<*xRel) ++ xPost
+                           | xAll <- yRel
+                           , let (xPre, (xRel, xPost)) = splitAt xb xAll
+                                               & second (splitAt $ xe-xb) ] ++ yPost
+               where (yPre, (yRel, yPost)) = splitAt yb field
+                                   & second (splitAt $ ye-yb)
+       idc i
+        | c <- toEnum $ fromEnum 'a' + i
+        , c <= 'z'                        = [c]
+       gridClass = "autogrid_"<>Txt.intercalate "-" (Txt.pack<$>gridRep)
+       grids = [lucius|
+                 div .#{gridClass} {
+                    display: grid;
+                 }
+               |]()
 preprocPres (Pure x) = Pure x
 preprocPres (Deterministic f p) = Deterministic f $ preprocPres p
 preprocPres (Interactive p a) = Interactive (preprocPres p) a
