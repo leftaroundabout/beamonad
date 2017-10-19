@@ -9,6 +9,8 @@
 -- 
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveTraversable     #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -36,7 +38,7 @@ import Lens.Micro.TH
 
 data Gridded a = GridRegion a
                | GridDivisions [[Gridded a]]
-  deriving (Generic, Functor, Eq, Show)
+  deriving (Generic, Functor, Eq, Show, Foldable, Traversable)
 instance FromJSON a => FromJSON (Gridded a)
 instance ToJSON a => ToJSON (Gridded a)
 

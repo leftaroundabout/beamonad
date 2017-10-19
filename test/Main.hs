@@ -6,6 +6,7 @@ import Text.Lucius
 import Text.Hamlet
 import Data.Foldable
 import Data.Semigroup
+import Data.Semigroup.Numbered
 import Data.String (fromString)
 
 import Data.Time.Clock
@@ -68,6 +69,12 @@ main = yeamer . styling ([lucius|
    "The current time at the server"
     ====== do
      fromString $ show t
+
+   "A slide with automatic grid"
+    ====== do
+      "bla" │ "bli" │ "blo"
+        ──
+       "blum"   │  "blubb"
 
 
 

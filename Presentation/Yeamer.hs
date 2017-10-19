@@ -7,18 +7,20 @@
 -- Stability   : experimental
 -- Portability : portable
 -- 
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE QuasiQuotes         #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE UnicodeSyntax       #-}
-{-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE QuasiQuotes            #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE UnicodeSyntax          #-}
+{-# LANGUAGE ConstraintKinds        #-}
 
 module Presentation.Yeamer ( Presentation
                            , staticContent, serverSide
@@ -46,6 +48,7 @@ import Text.Julius (rawJS)
 
 import Data.Foldable (fold)
 import qualified Data.Semigroup as SG
+import Data.Semigroup.Numbered
 import Data.Monoid
 import Data.Maybe
 import Data.Functor.Identity
@@ -252,6 +255,23 @@ instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
   mempty = Resultless $ Encaps ManualDivs (Map.empty :: Map Text (IPresentation m ()))
 
+instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
+  sappendN _ (Resultless (Encaps GriddedBlocks l))
+             (Resultless (Encaps GriddedBlocks r))
+           = Resultless . Encaps GriddedBlocks $ (discardResult<$>l) │ (discardResult<$>r)
+  sappendN _ l@(Resultless (Encaps GriddedBlocks _)) r
+           = l │ Resultless (Encaps GriddedBlocks $ pure r)
+  sappendN _ l r
+           = Resultless (Encaps GriddedBlocks $ pure l) │ r
+
+instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
+  sappendN _ (Resultless (Encaps GriddedBlocks t))
+             (Resultless (Encaps GriddedBlocks b))
+           = Resultless . Encaps GriddedBlocks $ (discardResult<$>t) ── (discardResult<$>b)
+  sappendN _ t@(Resultless (Encaps GriddedBlocks _)) b
+           = t │ Resultless (Encaps GriddedBlocks $ pure b)
+  sappendN _ t b
+           = Resultless (Encaps GriddedBlocks $ pure t) ── b
 
 
 outerConstructorName :: IPresentation m r -> String
