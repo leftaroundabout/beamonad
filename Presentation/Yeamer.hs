@@ -112,7 +112,8 @@ preprocPres (Encaps GriddedBlocks p)
            = Styling grids
            . divClass gridClass
            . fmap (backonstruct . map (first $ read . Txt.unpack) . Map.toList)
-           $ Encaps ManualDivs layouted
+           . Encaps ManualDivs
+           $ preprocPres <$> layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p
        layouted = Map.fromList $ first (("autogrid-range_"<>) . idc) . snd <$> prelayed
        gridRep :: [[Text]]
@@ -235,6 +236,7 @@ getHomeR = do
                       $ Map.toAscList contsrs
                  ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
+       go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
 
@@ -288,6 +290,7 @@ outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
 outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
 outerConstructorName (Encaps ManualDivs _) = "Encaps ManualDivs"
+outerConstructorName (Encaps GriddedBlocks _) = "Encaps GriddedBlocks"
 outerConstructorName (Pure _) = "Pure"
 outerConstructorName (Deterministic _ _) = "Deterministic"
 outerConstructorName (Interactive _ _) = "Interactive"
