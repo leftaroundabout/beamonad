@@ -286,6 +286,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
+outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
 outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
@@ -458,10 +459,14 @@ postChPosR = do
                         skipContentless (crumbh, crumbp<>"1") $ opt k'
                       Nothing -> return Nothing
             skipContentless crumbs (Styling _ c) = skipContentless crumbs c
+            skipContentless crumbs (Resultless c)
+                = fmap (const ()) <$> skipContentless crumbs c
             skipContentless crumbs (Deterministic f c)
                 = fmap f <$> skipContentless crumbs c
             skipContentless _ (StaticContent _) = return Nothing
             skipContentless _ (Encaps _ _) = return Nothing
+            skipContentless _ p = error
+             $ "`skipContentless` does not support "++outerConstructorName p
         presentation <- getYesod
         go ("","") (finePath <$> Txt.words path) presentation
         return ()
