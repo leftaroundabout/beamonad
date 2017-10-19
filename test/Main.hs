@@ -70,11 +70,19 @@ main = yeamer . styling ([lucius|
     ====== do
      fromString $ show t
 
+
    "A slide with automatic grid"
     ====== do
       "bla" │ "bli" │ "blo"
         ──
        "blum"   │  "blubb"
+
+
+   let hydra = "head" >>= \()->  hydra │ hydra
+                                 ──
+                                 hydra │ hydra
+   "Hydra"
+    ====== hydra
 
 
 
