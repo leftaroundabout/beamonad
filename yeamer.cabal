@@ -28,6 +28,11 @@ library
                        , blaze-html
                        , semigroups
                        , numbered-semigroups >=0.1 && <0.2
+                       , TeX-my-math >=0.201.0.0 && < 0.202
+                       , dumb-cas
+                       , HaTeX
+                       , texmath >=0.9 && <0.10
+                       , xml
                        , containers
                        , microlens >=0.4 && <0.6
                        , microlens-th
@@ -44,6 +49,7 @@ executable test-presentation
   build-depends:       base >=4.8 && <4.10
                        , yeamer
                        , shakespeare
+                       , TeX-my-math
                        , semigroups
                        , numbered-semigroups
                        , time

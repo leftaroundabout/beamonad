@@ -22,13 +22,13 @@
 {-# LANGUAGE UnicodeSyntax          #-}
 {-# LANGUAGE ConstraintKinds        #-}
 
-module Presentation.Yeamer (
-                           -- * The type
-                             Presentation
+module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
                            , yeamer
                            -- * Primitives
                            , staticContent, serverSide
+                           -- ** Maths
+                           , ($<>)
                            -- * Structure / composition
                            , addHeading, (======), vconcat
                            -- * CSS
@@ -51,6 +51,14 @@ import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
+
+import qualified CAS.Dumb.Symbols as TMM
+import qualified CAS.Dumb.Tree as TMM
+import qualified Math.LaTeX.Prelude as TMM
+import Text.LaTeX (LaTeX)
+import qualified Text.LaTeX as LaTeX
+import qualified Text.TeXMath as MathML
+import qualified Text.XML.Light as XML
 
 import Data.Foldable (fold)
 import qualified Data.Semigroup as SG
@@ -387,6 +395,18 @@ vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
         where si = show i
        ll = length l
        lll = length $ show ll
+
+infixr 6 $<>
+($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
+         => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
+           -> IPresentation m r -> IPresentation m r
+maths $<> other = xml <> other
+ where xml = case MathML.readTeX . Txt.unpack
+                    $ LaTeX.render (TMM.toMathLaTeX maths :: LaTeX) of
+         Right exps -> StaticContent . HTM.preEscapedText . Txt.pack . XML.showElement
+                        $ MathML.writeMathML MathML.DisplayInline exps
+         Left err -> error $ "Failed to re-parse generated LaTeX. "++err
+       
 
 postChPosR :: Handler ()
 postChPosR = do

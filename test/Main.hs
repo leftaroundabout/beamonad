@@ -4,6 +4,8 @@
 import Presentation.Yeamer
 import Text.Lucius
 import Text.Hamlet
+import Math.LaTeX.Prelude
+
 import Data.Foldable
 import Data.Semigroup
 import Data.Semigroup.Numbered
@@ -35,7 +37,7 @@ main = yeamer . styling ([lucius|
                   }
                  |] ()) $ do
 
-
+   
    "Heading"
     ======
     "Simple test “presentation”"
@@ -79,11 +81,16 @@ main = yeamer . styling ([lucius|
        "blum"   │  "blubb"
 
 
-   "Hydra"
+   ()<-"Hydra"
     ======
     fix (\h -> "head" >>= \() -> h │ h
                                  ──
                                  h │ h )
+
+
+   "Some maths"
+    ======
+    "Let's consider "<> 𝑎*𝑏/(7-pi) $<>"..."
 
 
 
