@@ -22,12 +22,18 @@
 {-# LANGUAGE UnicodeSyntax          #-}
 {-# LANGUAGE ConstraintKinds        #-}
 
-module Presentation.Yeamer ( Presentation
+module Presentation.Yeamer (
+                           -- * The type
+                             Presentation
+                           -- * Running a presentation
+                           , yeamer
+                           -- * Primitives
                            , staticContent, serverSide
-                           , divClass, (#%), (%##)
+                           -- * Structure / composition
                            , addHeading, (======), vconcat
-                           , styling
-                           , yeamer ) where
+                           -- * CSS
+                           , divClass, (#%), (%##), styling
+                           ) where
 
 import Yesod
 import Yesod.Form.Jquery
