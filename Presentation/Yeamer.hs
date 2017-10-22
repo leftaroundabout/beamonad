@@ -28,7 +28,7 @@ module Presentation.Yeamer ( Presentation
                            -- * Primitives
                            , staticContent, serverSide
                            -- ** Maths
-                           , ($<>)
+                           , ($<>), maths
                            -- * Structure / composition
                            , addHeading, (======), vconcat
                            -- * CSS
@@ -400,14 +400,15 @@ infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
            -> IPresentation m r -> IPresentation m r
-($<>) = (<>) . renderMaths MathML.DisplayInline
+($<>) = (<>) . renderTeXMaths MathML.DisplayInline . TMM.toMathLaTeX
 
-renderMaths :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
-         => MathML.DisplayType
-          -> TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
-           -> IPresentation m r
-renderMaths dispSty maths = case MathML.readTeX . Txt.unpack
-                                   $ LaTeX.render (TMM.toMathLaTeX maths :: LaTeX) of
+maths :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
+        => [[TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)]]
+          -> String -> IPresentation m r
+maths eqns = renderTeXMaths MathML.DisplayBlock . TMM.maths eqns
+
+renderTeXMaths :: MathML.DisplayType -> LaTeX -> IPresentation m ()
+renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex of
          Right exps -> StaticContent . HTM.preEscapedText . Txt.pack . XML.showElement
                         $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err

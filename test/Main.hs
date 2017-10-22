@@ -4,7 +4,8 @@
 import Presentation.Yeamer
 import Text.Lucius
 import Text.Hamlet
-import Math.LaTeX.Prelude
+import Math.LaTeX.Prelude hiding (maths)
+import Math.LaTeX.StringLiterals
 
 import Data.Foldable
 import Data.Semigroup
@@ -90,7 +91,11 @@ main = yeamer . styling ([lucius|
 
    "Some maths"
     ======
-    "Let's consider "<> 𝑎*𝑏/(7-pi) $<>"..."
+    "Let's consider "<> 𝑎*𝑏/(7-pi) $<>". This ensures"
+     <> maths[[ 𝑥 + 𝑦 ⩵ (-2*ζ,99+𝑢)∫d ρ 𝑧 ]]"."
+     <>"Furthermore, "<> ( 3⊂19 ⩵ ω∩set 𝑚 ) $<>" implies that"
+     <> maths[[ 37◞∑"foo" ≥ 𝑦◞◝(3.79,"bla") ]]","
+     <>"and therefore "<> (-τ) $<>"."
 
 
 
