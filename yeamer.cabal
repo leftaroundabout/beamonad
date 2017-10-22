@@ -24,6 +24,8 @@ library
   build-depends:       base >=4.8 && <4.9
                        , yesod >=1.4 && <1.5
                        , yesod-form
+                       , yesod-static
+                       , js-jquery
                        , shakespeare
                        , blaze-html
                        , semigroups
@@ -39,7 +41,10 @@ library
                        , text 
                        , bytestring 
                        , aeson 
+                       , filepath
+                       , template-haskell
   -- hs-source-dirs:      
+--  ghc-options:         -ddump-splices
   default-language:    Haskell2010
 
 executable test-presentation

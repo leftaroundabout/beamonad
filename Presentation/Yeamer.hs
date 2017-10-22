@@ -52,6 +52,11 @@ import Presentation.Yeamer.Internal.Grid
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
 
+import qualified Yesod.Static as YesodStatic
+import Yesod.EmbeddedStatic
+import qualified Language.Javascript.JQuery as JQuery
+import Language.Haskell.TH.Syntax (Exp(LitE), Lit(StringL), runIO)
+
 import qualified CAS.Dumb.Symbols as TMM
 import qualified CAS.Dumb.Tree as TMM
 import qualified Math.LaTeX.Prelude as TMM
@@ -70,6 +75,8 @@ import Control.Monad
 import Control.Arrow (first, second)
 
 import Data.Function ((&))
+
+import System.FilePath (takeDirectory)
 
 import GHC.Generics
 
@@ -105,14 +112,22 @@ instance (r ~ ()) => IsString (IPresentation m r) where
 
 type Presentation = IPresentation IO ()
 
-mkYesod "Presentation" [parseRoutes|
+data PresentationServer = PresentationServer {
+      presentationToShow :: Presentation
+    , getStatic :: EmbeddedStatic
+    }
+
+mkEmbeddedStatic False "myStatic" . pure . embedFileAt "jquery.js" =<< runIO JQuery.file
+
+mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /changeposition ChPosR POST
 /reset ResetR GET
+/static StaticR EmbeddedStatic getStatic
 |]
-instance Yesod Presentation
-instance YesodJquery Presentation
-
+instance Yesod PresentationServer where
+  addStaticContent = embedStaticContent getStatic StaticR Right
+instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
@@ -165,14 +180,14 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 getHomeR :: Handler Html
 getHomeR = do
-   presentation <- getYesod
+   PresentationServer presentation statics <- getYesod
    defaultLayout $ do
-      addScriptRemote "https://code.jquery.com/jquery-3.1.1.min.js"
+      addScript $ StaticR jquery_js
       slide <- chooseSlide "" "" Nothing Nothing presentation
       let contents = go 0 slide
       toWidget contents
  where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
-                       -> IPresentation m r -> WidgetT Presentation IO Presentation
+                       -> IPresentation m r -> WidgetT PresentationServer IO Presentation
        chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
        chooseSlide path "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty >> chooseSlide path "" Nothing Nothing conts
@@ -500,7 +515,7 @@ postChPosR = do
             skipContentless _ (Encaps _ _) = return Nothing
             skipContentless _ p = error
              $ "`skipContentless` does not support "++outerConstructorName p
-        presentation <- getYesod
+        PresentationServer presentation _ <- getYesod
         go ("","") (finePath <$> Txt.words path) presentation
         return ()
  where finePath p
@@ -536,4 +551,4 @@ revertProgress path = do
         deleteSession skipOrigKey
 
 yeamer :: Presentation -> IO ()
-yeamer = warp 14910 . preprocPres
+yeamer = warp 14910 . (`PresentationServer`myStatic) . preprocPres
