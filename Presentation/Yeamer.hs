@@ -400,12 +400,18 @@ infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
            -> IPresentation m r -> IPresentation m r
-maths $<> other = xml <> other
- where xml = case MathML.readTeX . Txt.unpack
-                    $ LaTeX.render (TMM.toMathLaTeX maths :: LaTeX) of
+($<>) = (<>) . renderMaths MathML.DisplayInline
+
+renderMaths :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
+         => MathML.DisplayType
+          -> TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
+           -> IPresentation m r
+renderMaths dispSty maths = case MathML.readTeX . Txt.unpack
+                                   $ LaTeX.render (TMM.toMathLaTeX maths :: LaTeX) of
          Right exps -> StaticContent . HTM.preEscapedText . Txt.pack . XML.showElement
-                        $ MathML.writeMathML MathML.DisplayInline exps
+                        $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
+
        
 
 postChPosR :: Handler ()
