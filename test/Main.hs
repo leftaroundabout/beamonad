@@ -44,15 +44,6 @@ main = yeamer . styling ([lucius|
     "Simple test “presentation”"
 
 
-   "A slide with grid layout"
-    ====== do
-     "slide"%##[["lside","rtop"]
-               ,["lside","rbot"]]
-        $  "lside"#%filling 8 "This goes on the left side"
-        <> "rtop"#%filling 6 "This goes right on top"
-        <> "rbot"#%filling 6 "This goes right down"
-
-
    "Some maths"
     ======
     "Let's consider "<> 𝑎*𝑏/(7-pi) $<>". This ensures"
@@ -61,6 +52,13 @@ main = yeamer . styling ([lucius|
      <>"Furthermore, "<> ( 3⊂19 ⩵ ω∩set 𝑚 ) $<>" implies that"
      <> maths[[ 37◞∑"foo" ≥ 𝑦◞◝(3.79,"bla") ]]","
      <>"and therefore "<> (-τ) $<>"."
+
+
+   "A slide with automatic grid layout"
+    ====== do
+      "bla" │ "bli" │ "blo"
+        ──
+       "blum"   │  "blubb"
 
    
    "Manual HTML, and cell-wise sequencing"
@@ -79,17 +77,19 @@ main = yeamer . styling ([lucius|
             ]
    
    
+   "Manual div-classes / grid layout"
+    ====== do
+     "slide"%##[["lside","rtop"]
+               ,["lside","rbot"]]
+        $  "lside"#%filling 8 "This goes on the left side"
+        <> "rtop"#%filling 6 "This goes right on top"
+        <> "rbot"#%filling 6 "This goes right down"
+
+
    t <- serverSide getCurrentTime
    "The current time at the server"
     ====== do
      fromString $ show t
-
-
-   "A slide with automatic grid"
-    ====== do
-      "bla" │ "bli" │ "blo"
-        ──
-       "blum"   │  "blubb"
 
 
    ()<-"Hydra"
