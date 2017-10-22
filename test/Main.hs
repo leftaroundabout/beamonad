@@ -2,10 +2,10 @@
 {-# LANGUAGE QuasiQuotes       #-}
 
 import Presentation.Yeamer
+import Presentation.Yeamer.Maths
+
 import Text.Lucius
 import Text.Hamlet
-import Math.LaTeX.Prelude hiding (maths)
-import Math.LaTeX.StringLiterals
 
 import Data.Foldable
 import Data.Semigroup
