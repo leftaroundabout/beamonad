@@ -38,26 +38,10 @@ main = yeamer . styling ([lucius|
                   }
                  |] ()) $ do
 
-   
+
    "Heading"
     ======
     "Simple test “presentation”"
-
-
-   "Another slide"
-    ======
-    vconcat [ staticContent $ [hamlet|
-                 Static text
-                 <br>
-                 More text
-                 <br>
-                 More text
-               |]()
-            , do "Click me!"
-                 "You've clicked."
-            , do "No, me!"
-                 "You've clicked."
-            ]
 
 
    "A slide with grid layout"
@@ -67,6 +51,32 @@ main = yeamer . styling ([lucius|
         $  "lside"#%filling 8 "This goes on the left side"
         <> "rtop"#%filling 6 "This goes right on top"
         <> "rbot"#%filling 6 "This goes right down"
+
+
+   "Some maths"
+    ======
+    "Let's consider "<> 𝑎*𝑏/(7-pi) $<>". This ensures"
+     <> maths[[ 𝑥 + 𝑦 ⩵ (-2*ζ,99+𝑢)∫d ρ 𝑧, ""∀:𝑎⪢9 ]
+             ,[ 𝑥 - 𝑦 ⩵ 2786126792567    , ""∀:𝑏⪢3 ]]"."
+     <>"Furthermore, "<> ( 3⊂19 ⩵ ω∩set 𝑚 ) $<>" implies that"
+     <> maths[[ 37◞∑"foo" ≥ 𝑦◞◝(3.79,"bla") ]]","
+     <>"and therefore "<> (-τ) $<>"."
+
+   
+   "Manual HTML, and cell-wise sequencing"
+    ======
+    vconcat [ staticContent $ [hamlet|
+                 <i>Static</i> text
+                 <br>
+                 More <b>text</b>
+                 <br>
+                 <em>More</em> text
+               |]()
+            , do "Click me!"
+                 "You've clicked."
+            , do "No, me!"
+                 "You've clicked."
+            ]
    
    
    t <- serverSide getCurrentTime
@@ -89,13 +99,7 @@ main = yeamer . styling ([lucius|
                                  h │ h )
 
 
-   "Some maths"
-    ======
-    "Let's consider "<> 𝑎*𝑏/(7-pi) $<>". This ensures"
-     <> maths[[ 𝑥 + 𝑦 ⩵ (-2*ζ,99+𝑢)∫d ρ 𝑧 ]]"."
-     <>"Furthermore, "<> ( 3⊂19 ⩵ ω∩set 𝑚 ) $<>" implies that"
-     <> maths[[ 37◞∑"foo" ≥ 𝑦◞◝(3.79,"bla") ]]","
-     <>"and therefore "<> (-τ) $<>"."
+   return ()
 
 
 
