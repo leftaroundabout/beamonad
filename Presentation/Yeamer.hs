@@ -349,7 +349,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
              (Resultless (Encaps GriddedBlocks b))
            = Resultless . Encaps GriddedBlocks $ (discardResult<$>t) ── (discardResult<$>b)
   sappendN _ t@(Resultless (Encaps GriddedBlocks _)) b
-           = t │ Resultless (Encaps GriddedBlocks $ pure b)
+           = t ── Resultless (Encaps GriddedBlocks $ pure b)
   sappendN _ t b
            = Resultless (Encaps GriddedBlocks $ pure t) ── b
 
