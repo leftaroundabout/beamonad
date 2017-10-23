@@ -60,6 +60,13 @@ main = yeamer . styling ([lucius|
         ──
        "blum"   │  "blubb"
 
+
+   "Image files"
+    ====== do
+    imageFromFile "/usr/share/icons/HighContrast/256x256/apps/firefox.png"
+     ──
+     "(Firefox logo)"
+
    
    "Manual HTML, and cell-wise sequencing"
     ======

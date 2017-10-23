@@ -42,7 +42,7 @@ library
                        , text 
                        , bytestring 
                        , aeson 
-                       , filepath
+                       , directory
                        , template-haskell
   -- hs-source-dirs:      
 --  ghc-options:         -ddump-splices

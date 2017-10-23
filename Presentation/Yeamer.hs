@@ -29,6 +29,8 @@ module Presentation.Yeamer ( Presentation
                            , staticContent, serverSide
                            -- ** Maths
                            , ($<>), maths
+                           -- ** Images
+                           , imageFromFile
                            -- * Structure / composition
                            , addHeading, (======), vconcat
                            -- * CSS
@@ -72,11 +74,11 @@ import Data.Monoid
 import Data.Maybe
 import Data.Functor.Identity
 import Control.Monad
-import Control.Arrow (first, second)
+import Control.Arrow (first, second, left)
 
 import Data.Function ((&))
 
-import System.FilePath (takeDirectory)
+import System.Directory (makeAbsolute)
 
 import GHC.Generics
 
@@ -183,32 +185,59 @@ getHomeR = do
    PresentationServer presentation statics <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
-      slide <- chooseSlide "" "" Nothing Nothing presentation
+      Left slide <- chooseSlide "" "" Nothing Nothing presentation
       let contents = go 0 slide
       toWidget contents
  where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
-                       -> IPresentation m r -> WidgetT PresentationServer IO Presentation
-       chooseSlide _ "" Nothing Nothing (StaticContent conts) = pure $ StaticContent conts
+                       -> IPresentation IO r -> WidgetT PresentationServer IO
+                                                (Either Presentation r)
+       chooseSlide _ "" Nothing Nothing (StaticContent conts)
+           = pure . Left $ StaticContent conts
        chooseSlide path "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty >> chooseSlide path "" Nothing Nothing conts
        chooseSlide path "" Nothing Nothing (Encaps ManualDivs conts)
-           = discardResult . Encaps ManualDivs
+           = postGather
                <$> (`Map.traverseWithKey`conts) `id` \i cell ->
                  chooseSlide (path<>" div."<>i) "" Nothing Nothing cell
+        where postGather sq
+               | Right p's <- sequence sq
+                            = Right p's
+               | otherwise  = Left . discardResult $ Encaps ManualDivs
+                                $ fmap (\(Left x)->x) sq
        chooseSlide path "" Nothing Nothing (Encaps f conts)
-           = discardResult . Encaps f
+           = postGather
                <$> traverse (chooseSlide path "" Nothing Nothing) conts
-       chooseSlide path "" Nothing Nothing (Interactive conts _)
-           = discardResult <$> chooseSlide path "" Nothing Nothing conts
-       chooseSlide path "" Nothing Nothing (Resultless conts)
-           = discardResult <$> chooseSlide path "" Nothing Nothing conts
-       chooseSlide path "" Nothing Nothing (Deterministic _ conts)
-           = discardResult <$> chooseSlide path "" Nothing Nothing conts
+        where postGather sq
+               | Right p's <- sequence sq
+                            = Right p's
+               | otherwise  = Left . discardResult $ Encaps f
+                                $ fmap (\(Left x)->x) sq
+       chooseSlide path "" Nothing Nothing (Interactive conts followAction) = do
+           purity <- chooseSlide path "" Nothing Nothing conts
+           case purity of
+             Right pur -> Right <$> liftIO followAction
+             Left pres -> pure . Left $ discardResult pres
+       chooseSlide path "" Nothing Nothing (Resultless conts) = do
+           purity <- chooseSlide path "" Nothing Nothing conts
+           case purity of
+             Right pur -> pure $ Right ()
+             Left pres -> pure . Left $ discardResult pres
+       chooseSlide path "" Nothing Nothing (Deterministic f conts) = do
+           purity <- chooseSlide path "" Nothing Nothing conts
+           case purity of
+             Right pur -> pure . Right $ f pur
+             Left pres -> pure . Left $ discardResult pres
        chooseSlide path pdiv bwd fwd (Dependent def opt) = do
           let progPath = path<>" div.no"<>pdiv<>"slide"
           positionCh <- lookupProgress progPath
           case positionCh of
-            Nothing -> chooseSlide path (pdiv<>"0") bwd (Just progPath) def
+            Nothing -> do
+              purity <- chooseSlide path (pdiv<>"0") bwd (Just progPath) def
+              case purity of
+                 Right x -> do
+                   setProgress progPath bwd x
+                   chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
+                 Left pres -> pure . Left $ discardResult pres
             Just x -> chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
        chooseSlide path pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
@@ -243,7 +272,10 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          divClass thisChoice <$> chooseSlide newPath "" Nothing Nothing pres
+          left (divClass thisChoice) <$> chooseSlide newPath "" Nothing Nothing pres
+       chooseSlide _ _ _ _ (Pure x) = pure $ Right x
+       chooseSlide _ _ _ _ pres
+          = error $ "Cannot display "++outerConstructorName pres
        go :: Int -> IPresentation m r -> Html
        go _ (StaticContent conts) = conts
        go _ (Pure _) = error $ "Error: impossible to render a slide of an empty presentation."
@@ -428,6 +460,12 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
                         $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
 
+
+imageFromFile :: FilePath -> IPresentation IO ()
+imageFromFile file = do
+   absPath <- serverSide (makeAbsolute file)
+   StaticContent . HTM.preEscapedText
+      $ "<img src=\"file://"<>Txt.pack absPath<>"\"></img>"
        
 
 postChPosR :: Handler ()
