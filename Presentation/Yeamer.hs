@@ -170,7 +170,7 @@ preprocPres (Encaps GriddedBlocks p)
         , c <= 'z'                        = Txt.singleton c
        gridClass = "autogrid_"<>Txt.intercalate "-" (Txt.concat<$>gridRep)
        grids = [lucius|
-                 div .#{gridClass} {
+                 div.#{gridClass} {
                     display: grid;
                     grid-template-areas: #{areas}
                  }
