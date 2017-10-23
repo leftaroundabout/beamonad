@@ -41,12 +41,14 @@ import Yesod
 import Yesod.Form.Jquery
 
 import qualified Data.Text as Txt
+import qualified Data.Text.Lazy as Txt (toStrict)
 import Data.Text (Text)
 import Data.String (IsString (..))
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
+import qualified Text.Blaze.Html.Renderer.Text as HTMText
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Presentation.Yeamer.Internal.Grid
@@ -54,7 +56,7 @@ import Presentation.Yeamer.Internal.Grid
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
 
-import qualified Yesod.Static as YesodStatic
+import Yesod.Static
 import Yesod.EmbeddedStatic
 import qualified Language.Javascript.JQuery as JQuery
 import Language.Haskell.TH.Syntax (Exp(LitE), Lit(StringL), runIO)
@@ -78,7 +80,9 @@ import Control.Arrow (first, second, left)
 
 import Data.Function ((&))
 
-import System.Directory (makeAbsolute)
+import System.FilePath (takeFileName, takeExtension, dropExtension, (<.>), (</>))
+import System.Directory ( doesPathExist, makeAbsolute
+                        , createDirectoryIfMissing, createFileLink )
 
 import GHC.Generics
 
@@ -117,15 +121,20 @@ type Presentation = IPresentation IO ()
 data PresentationServer = PresentationServer {
       presentationToShow :: Presentation
     , getStatic :: EmbeddedStatic
+    , getPseudostatic :: Static
     }
 
 mkEmbeddedStatic False "myStatic" . pure . embedFileAt "jquery.js" =<< runIO JQuery.file
+
+pStatDir :: FilePath
+pStatDir = ".pseudo-static-content"
 
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /changeposition ChPosR POST
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
+/pseudostatic PStaticR Static getPseudostatic
 |]
 instance Yesod PresentationServer where
   addStaticContent = embedStaticContent getStatic StaticR Right
@@ -182,7 +191,7 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 getHomeR :: Handler Html
 getHomeR = do
-   PresentationServer presentation statics <- getYesod
+   PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
       Left slide <- chooseSlide "" "" Nothing Nothing presentation
@@ -463,9 +472,19 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
 
 imageFromFile :: FilePath -> IPresentation IO ()
 imageFromFile file = do
-   absPath <- serverSide (makeAbsolute file)
-   StaticContent . HTM.preEscapedText
-      $ "<img src=\"file://"<>Txt.pack absPath<>"\"></img>"
+   let prepareServing linkPath = do
+         isOccupied <- doesPathExist linkPath
+         if isOccupied
+            then prepareServing $ dropExtension linkPath <> "~1" <.> takeExtension linkPath
+            else do
+              createFileLink file linkPath
+              let linkFname = takeFileName linkPath
+                  refCode = Txt.toStrict . HTMText.renderHtml $ [hamlet|
+                <img src="pseudostatic/#{linkFname}">
+               |]()
+              return refCode
+   imgCode <- serverSide . prepareServing $ pStatDir</>takeFileName file
+   StaticContent . HTM.preEscapedText $ imgCode
        
 
 postChPosR :: Handler ()
@@ -553,7 +572,7 @@ postChPosR = do
             skipContentless _ (Encaps _ _) = return Nothing
             skipContentless _ p = error
              $ "`skipContentless` does not support "++outerConstructorName p
-        PresentationServer presentation _ <- getYesod
+        PresentationServer presentation _ _ <- getYesod
         go ("","") (finePath <$> Txt.words path) presentation
         return ()
  where finePath p
@@ -589,4 +608,7 @@ revertProgress path = do
         deleteSession skipOrigKey
 
 yeamer :: Presentation -> IO ()
-yeamer = warp 14910 . (`PresentationServer`myStatic) . preprocPres
+yeamer presentation = do
+   createDirectoryIfMissing True pStatDir
+   pStat <- static pStatDir
+   warp 14910 $ PresentationServer (preprocPres presentation) myStatic pStat
