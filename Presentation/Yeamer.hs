@@ -32,7 +32,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Images
                            , imageFromFile
                            -- * Structure / composition
-                           , addHeading, (======), vconcat
+                           , addHeading, (======), vconcat, discardResult
                            -- * CSS
                            , divClass, (#%), (%##), styling
                            ) where
