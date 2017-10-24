@@ -477,14 +477,12 @@ imageFromFile file = do
          if isOccupied
             then prepareServing $ dropExtension linkPath <> "~1" <.> takeExtension linkPath
             else do
-              createFileLink file linkPath
+              absOrig <- makeAbsolute file
+              createFileLink absOrig linkPath
               let linkFname = takeFileName linkPath
-                  refCode = Txt.toStrict . HTMText.renderHtml $ [hamlet|
-                <img src="pseudostatic/#{linkFname}">
-               |]()
-              return refCode
+              return $ "pseudostatic"</>linkFname
    imgCode <- serverSide . prepareServing $ pStatDir</>takeFileName file
-   StaticContent . HTM.preEscapedText $ imgCode
+   StaticContent $ [hamlet| <img src=#{imgCode}> |]()
        
 
 postChPosR :: Handler ()
