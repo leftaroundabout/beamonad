@@ -70,13 +70,14 @@ import qualified Text.TeXMath as MathML
 import qualified Text.XML.Light as XML
 
 import Data.Foldable (fold)
+import Data.These
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
 import Data.Monoid
 import Data.Maybe
 import Data.Functor.Identity
 import Control.Monad
-import Control.Arrow (first, second, left)
+import Control.Arrow (first, second)
 
 import Data.Function ((&))
 
@@ -85,6 +86,8 @@ import System.Directory ( doesPathExist, makeAbsolute
                         , createDirectoryIfMissing, createFileLink )
 
 import GHC.Generics
+import Lens.Micro
+import Data.Bifunctor (bimap)
 
 type PrPath = Text
 data PositionChange = PositionChange
@@ -194,59 +197,52 @@ getHomeR = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
-      Left slide <- chooseSlide "" "" Nothing Nothing presentation
-      let contents = go 0 slide
-      toWidget contents
+      slideChoice <- chooseSlide "" "" Nothing Nothing presentation
+      (`here`slideChoice) $ \slide -> do
+          let contents = go 0 slide
+          toWidget contents
+      return ()
  where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
                        -> IPresentation IO r -> WidgetT PresentationServer IO
-                                                (Either Presentation r)
+                                                (These Presentation r)
        chooseSlide _ "" Nothing Nothing (StaticContent conts)
-           = pure . Left $ StaticContent conts
+           = pure $ These (StaticContent conts) ()
        chooseSlide path "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty >> chooseSlide path "" Nothing Nothing conts
-       chooseSlide path "" Nothing Nothing (Encaps ManualDivs conts)
-           = postGather
-               <$> (`Map.traverseWithKey`conts) `id` \i cell ->
+       chooseSlide path "" Nothing Nothing (Encaps f conts) = postGather <$> cellwise f
+        where postGather sq = case sequence sq of
+               That p's -> That p's
+               This _   -> This . discardResult $ Encaps f
+                                $ fmap (maybe mempty id . (^?here)) sq
+               These _ p's -> (`These`p's) . discardResult $ Encaps f
+                                $ fmap (maybe mempty id . (^?here)) sq
+              cellwise ManualDivs = (`Map.traverseWithKey`conts) `id` \i cell ->
                  chooseSlide (path<>" div."<>i) "" Nothing Nothing cell
-        where postGather sq
-               | Right p's <- sequence sq
-                            = Right p's
-               | otherwise  = Left . discardResult $ Encaps ManualDivs
-                                $ fmap (\(Left x)->x) sq
-       chooseSlide path "" Nothing Nothing (Encaps f conts)
-           = postGather
-               <$> traverse (chooseSlide path "" Nothing Nothing) conts
-        where postGather sq
-               | Right p's <- sequence sq
-                            = Right p's
-               | otherwise  = Left . discardResult $ Encaps f
-                                $ fmap (\(Left x)->x) sq
+              cellwise _ = traverse (chooseSlide path "" Nothing Nothing) conts
        chooseSlide path "" Nothing Nothing (Interactive conts followAction) = do
            purity <- chooseSlide path "" Nothing Nothing conts
-           case purity of
-             Right pur -> Right <$> liftIO followAction
-             Left pres -> pure . Left $ discardResult pres
+           case purity ^? here of
+             Just pres -> pure . This $ discardResult pres
+             Nothing   -> That <$> liftIO followAction
        chooseSlide path "" Nothing Nothing (Resultless conts) = do
            purity <- chooseSlide path "" Nothing Nothing conts
-           case purity of
-             Right pur -> pure $ Right ()
-             Left pres -> pure . Left $ discardResult pres
+           case purity ^? here of
+             Just pres -> pure . (`These`()) $ discardResult pres
+             Nothing   -> pure $ That ()
        chooseSlide path "" Nothing Nothing (Deterministic f conts) = do
            purity <- chooseSlide path "" Nothing Nothing conts
-           case purity of
-             Right pur -> pure . Right $ f pur
-             Left pres -> pure . Left $ discardResult pres
+           pure $ bimap discardResult f purity
        chooseSlide path pdiv bwd fwd (Dependent def opt) = do
           let progPath = path<>" div.no"<>pdiv<>"slide"
           positionCh <- lookupProgress progPath
           case positionCh of
             Nothing -> do
               purity <- chooseSlide path (pdiv<>"0") bwd (Just progPath) def
-              case purity of
+              case preferThis purity of
+                 Left pres -> pure . This $ discardResult pres
                  Right x -> do
                    setProgress progPath bwd x
                    chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
-                 Left pres -> pure . Left $ discardResult pres
             Just x -> chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
        chooseSlide path pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
@@ -281,8 +277,8 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          left (divClass thisChoice) <$> chooseSlide newPath "" Nothing Nothing pres
-       chooseSlide _ _ _ _ (Pure x) = pure $ Right x
+          (here %~ divClass thisChoice) <$> chooseSlide newPath "" Nothing Nothing pres
+       chooseSlide _ _ _ _ (Pure x) = pure $ That x
        chooseSlide _ _ _ _ pres
           = error $ "Cannot display "++outerConstructorName pres
        go :: Int -> IPresentation m r -> Html
@@ -309,6 +305,10 @@ getHomeR = do
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
+preferThis :: These a b -> Either a b
+preferThis (This a) = Left a
+preferThis (That b) = Right b
+preferThis (These a _) = Left a
 
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
@@ -395,6 +395,7 @@ instance Monad (IPresentation m) where
   Interactive p q >>= f = Dependent (Interactive p q) f
   Dependent p g >>= f = Dependent p $ g >=> f
   o >> Interactive (Pure _) q = Interactive (discardResult o) q
+  o >> Pure x = fmap (const x) o
   o >> n = o >>= const n
     
 
