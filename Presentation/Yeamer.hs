@@ -387,8 +387,7 @@ instance Monad (IPresentation m) where
   Resultless p >>= f = Dependent (Resultless p) f
   Styling s p >>= f = case p >>= f of
      Dependent p' f' -> Dependent (Styling s p') f'
-  Encaps (WithHeading h) (Identity p) >>= f = case p >>= f . Identity of
-     Dependent p' f' -> Dependent (Encaps (WithHeading h) $ Identity p') $ f' . runIdentity
+  Encaps (WithHeading h) p >>= f = Dependent (Encaps (WithHeading h) p) f
   Encaps ManualDivs ps >>= f = Dependent (Encaps ManualDivs ps) f
   Pure x >>= f = f x
   Deterministic g p >>= f = p >>= f . g
