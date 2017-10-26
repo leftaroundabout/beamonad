@@ -594,7 +594,7 @@ lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
 
 setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
 setProgress path skippedFrom prog = do
-   setSessionBS ("progress"<>path) (BSL.toStrict $ JSON.encode prog)
+   setSessionJSON ("progress"<>path) prog
    forM_ skippedFrom $ setSession ("progress-skip-origin"<>path)
 
 revertProgress :: MonadHandler m => PrPath -> m ()
@@ -604,6 +604,12 @@ revertProgress path = do
    lookupSession skipOrigKey >>= mapM_ `id` \skippedFrom -> do
         deleteSession $ "progress"<>skippedFrom
         deleteSession skipOrigKey
+
+lookupSessionJSON :: (MonadHandler m, JSON.FromJSON a) => Text -> m (Maybe a)
+lookupSessionJSON = fmap (JSON.decode . BSL.fromStrict =<<) . lookupSessionBS
+
+setSessionJSON :: (MonadHandler m, JSON.ToJSON a) => Text -> a -> m ()
+setSessionJSON k = setSessionBS k . BSL.toStrict . JSON.encode
 
 yeamer :: Presentation -> IO ()
 yeamer presentation = do
