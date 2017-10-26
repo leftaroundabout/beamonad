@@ -135,6 +135,7 @@ pStatDir = ".pseudo-static-content"
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /changeposition ChPosR POST
+/r StepBackR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -489,7 +490,7 @@ postChPosR :: Handler ()
 postChPosR = do
     PositionChange path isRevert <- requireJsonBody
     if isRevert
-     then revertProgress path
+     then mempty <$> revertProgress path
      else do
         let go, go' :: (PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
@@ -579,6 +580,18 @@ postChPosR = do
            = Txt.unpack prog
         | otherwise  = Txt.unpack p
 
+getStepBackR :: Handler Html
+getStepBackR = do
+    undoStack <- lookupSessionJSON "undo-stack"
+    mapM undo undoStack
+    redirect HomeR
+ where undo [] = return ()
+       undo (step:steps) = do
+          takenStep <- revertProgress step
+          case takenStep of
+             True -> setSessionJSON "undo-stack" steps
+             False -> undo steps
+
 getResetR :: Handler Html
 getResetR = do
     clearSession
@@ -594,16 +607,24 @@ lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
 
 setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
 setProgress path skippedFrom prog = do
-   setSessionJSON ("progress"<>path) prog
+   let stepPID = "progress"<>path
+   setSessionJSON stepPID prog
+   undoStack <- (JSON.decode . BSL.fromStrict =<<) <$> lookupSessionBS "undo-stack"
+   setSessionJSON "undo-stack" $ case undoStack of
+     Nothing -> [path]
+     Just oldSteps -> path : filter (/=path) oldSteps
    forM_ skippedFrom $ setSession ("progress-skip-origin"<>path)
 
-revertProgress :: MonadHandler m => PrPath -> m ()
+revertProgress :: MonadHandler m => PrPath -> m Bool
 revertProgress path = do
-   deleteSession $ "progress"<>path
+   let stepPID = "progress"<>path
+   wasPresent <- isJust <$> lookupSessionBS stepPID
+   deleteSession stepPID
    let skipOrigKey = "progress-skip-origin"<>path
    lookupSession skipOrigKey >>= mapM_ `id` \skippedFrom -> do
-        deleteSession $ "progress"<>skippedFrom
-        deleteSession skipOrigKey
+        revertProgress skippedFrom
+   deleteSession skipOrigKey
+   return wasPresent
 
 lookupSessionJSON :: (MonadHandler m, JSON.FromJSON a) => Text -> m (Maybe a)
 lookupSessionJSON = fmap (JSON.decode . BSL.fromStrict =<<) . lookupSessionBS
