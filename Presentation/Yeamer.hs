@@ -7,6 +7,7 @@
 -- Stability   : experimental
 -- Portability : portable
 -- 
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TemplateHaskell        #-}
@@ -83,11 +84,22 @@ import Data.Function ((&))
 
 import System.FilePath (takeFileName, takeExtension, dropExtension, (<.>), (</>))
 import System.Directory ( doesPathExist, makeAbsolute
-                        , createDirectoryIfMissing, createFileLink )
+                        , createDirectoryIfMissing
+#if MIN_VERSION_directory(1,3,1)
+                        , createFileLink )
+#endif
+                        )
+#if !MIN_VERSION_directory(1,3,1)
+import System.Posix.Files (createSymbolicLink)
+#endif
 
 import GHC.Generics
 import Lens.Micro
 import Data.Bifunctor (bimap)
+
+#if !MIN_VERSION_directory(1,3,1)
+createFileLink = createSymbolicLink
+#endif
 
 type PrPath = Text
 data PositionChange = PositionChange
