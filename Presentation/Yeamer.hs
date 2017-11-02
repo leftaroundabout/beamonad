@@ -276,6 +276,8 @@ getHomeR = do
                          return;
                      }
                      e.stopPropagation();
+                     history.replaceState({}, "back", "@{StepBackR}");
+                     history.pushState({}, "current", "@{HomeR}");
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
