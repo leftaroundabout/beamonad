@@ -394,12 +394,32 @@ instance Functor (IPresentation m) where
   fmap f q = Deterministic f q
 instance Applicative (IPresentation m) where
   pure = Pure
+  Pure f <*> x = fmap f x
+  f <*> Pure x = fmap ($ x) f
+--Styling s (Styling s' f) <*> x
+--Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
+--            => Container t -> t (IPresentation m r) -> IPresentation m (t r)
+--Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
+--Interactive :: Sessionable r
+--       => IPresentation m () -> m r -> IPresentation m r
+--Dependent :: Sessionable x
+--                => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
+  -- f <*> x = ap f x
 instance Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
   Resultless p >>= f = Dependent (Resultless p) f
-  Styling s p >>= f = case p >>= f of
-     Dependent p' f' -> Dependent (Styling s p') f'
+  Styling _ (Pure x) >>= f = f x
+  Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
+  Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
+  Styling s (Styling s' x) >>= f = Styling (s++s') x >>= f
+  Styling s (Encaps (WithHeading h) x) >>= f
+      = Dependent (Styling s (Encaps (WithHeading h) x)) f
+  Styling s (Encaps ManualDivs x) >>= f
+      = Dependent (Styling s (Encaps ManualDivs x)) f
+  Styling s (Deterministic g x) >>= f = Styling s x >>= f . g
+  Styling s (Interactive p o) >>= f = Dependent (Interactive (Styling s p) o) f
+  Styling s (Dependent p g) >>= f = Dependent (Styling s p) $ Styling s . g >=> f
   Encaps (WithHeading h) p >>= f = Dependent (Encaps (WithHeading h) p) f
   Encaps ManualDivs ps >>= f = Dependent (Encaps ManualDivs ps) f
   Pure x >>= f = f x
@@ -449,7 +469,8 @@ areaName#%c = fmap (Map.!areaName) $ areaName
                 #% Encaps ManualDivs (Map.singleton areaName c)
 
 styling :: Css -> IPresentation m r -> IPresentation m r
-styling = Styling . pure
+styling s (Styling s' a) = Styling (s:s') a
+styling s a = Styling [s] a
 
 staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
