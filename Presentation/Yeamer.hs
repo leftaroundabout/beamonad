@@ -621,7 +621,8 @@ postChPosR = do
         go ("", defaultChoiceName, "") (finePath <$> Txt.words path) presentation
         return ()
  where finePath p
-        | Just prog <- Txt.stripPrefix "div.n"
+        | Just prog <- fmap (Txt.dropWhile (=='n'))
+                    $ Txt.stripPrefix "div."
                      =<< Txt.stripSuffix "slide" p
            = Txt.unpack prog
         | otherwise  = Txt.unpack p
@@ -630,7 +631,7 @@ defaultChoiceName :: Text->PrPath
 defaultChoiceName pdiv = "n"<>pdiv<>"slide"
 
 disambiguateChoiceName :: (Text->PrPath) -> (Text->PrPath)
-disambiguateChoiceName = id
+disambiguateChoiceName = (.("n"<>))
 
 getStepBackR :: Handler Html
 getStepBackR = do
