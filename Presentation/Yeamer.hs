@@ -210,19 +210,21 @@ getHomeR = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
-      slideChoice <- chooseSlide "" "" Nothing Nothing presentation
+      slideChoice <- chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
       (`here`slideChoice) $ \slide -> do
           let contents = go 0 slide
           toWidget contents
       return ()
- where chooseSlide :: PrPath -> Text -> Maybe PrPath -> Maybe PrPath
+ where chooseSlide :: PrPath -> (Text->PrPath) -> Text -> Maybe PrPath -> Maybe PrPath
                        -> IPresentation IO r -> WidgetT PresentationServer IO
                                                 (These Presentation r)
-       chooseSlide _ "" Nothing Nothing (StaticContent conts)
+       chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
-       chooseSlide path "" Nothing Nothing (Styling sty conts)
-                     = mapM_ toWidget sty >> chooseSlide path "" Nothing Nothing conts
-       chooseSlide path "" Nothing Nothing (Encaps f conts) = postGather <$> cellwise f
+       chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
+                     = mapM_ toWidget sty
+                        >> chooseSlide path choiceName "" Nothing Nothing conts
+       chooseSlide path choiceName "" Nothing Nothing (Encaps f conts)
+                  = postGather <$> cellwise f
         where postGather sq = case sequence sq of
                That p's -> That p's
                This _   -> This . discardResult $ Encaps f
@@ -230,36 +232,36 @@ getHomeR = do
                These _ p's -> (`These`p's) . discardResult $ Encaps f
                                 $ fmap (maybe mempty id . (^?here)) sq
               cellwise ManualDivs = (`Map.traverseWithKey`conts) `id` \i cell ->
-                 chooseSlide (path<>" div."<>i) "" Nothing Nothing cell
-              cellwise _ = traverse (chooseSlide path "" Nothing Nothing) conts
-       chooseSlide path "" Nothing Nothing (Interactive conts followAction) = do
-           purity <- chooseSlide path "" Nothing Nothing conts
+                 chooseSlide (path<>" div."<>i) choiceName "" Nothing Nothing cell
+              cellwise _ = traverse (chooseSlide path choiceName "" Nothing Nothing) conts
+       chooseSlide path choiceName "" Nothing Nothing (Interactive conts followAction) = do
+           purity <- chooseSlide path choiceName "" Nothing Nothing conts
            case purity ^? here of
              Just pres -> pure . This $ discardResult pres
              Nothing   -> That <$> liftIO followAction
-       chooseSlide path "" Nothing Nothing (Resultless conts) = do
-           purity <- chooseSlide path "" Nothing Nothing conts
+       chooseSlide path choiceName "" Nothing Nothing (Resultless conts) = do
+           purity <- chooseSlide path choiceName "" Nothing Nothing conts
            case purity ^? here of
              Just pres -> pure . (`These`()) $ discardResult pres
              Nothing   -> pure $ That ()
-       chooseSlide path "" Nothing Nothing (Deterministic f conts) = do
-           purity <- chooseSlide path "" Nothing Nothing conts
+       chooseSlide path choiceName "" Nothing Nothing (Deterministic f conts) = do
+           purity <- chooseSlide path choiceName "" Nothing Nothing conts
            pure $ bimap discardResult f purity
-       chooseSlide path pdiv bwd fwd (Dependent def opt) = do
-          let progPath = path<>" div.no"<>pdiv<>"slide"
+       chooseSlide path choiceName pdiv bwd fwd (Dependent def opt) = do
+          let progPath = path<>" div."<>choiceName pdiv
           positionCh <- lookupProgress progPath
           case positionCh of
             Nothing -> do
-              purity <- chooseSlide path (pdiv<>"0") bwd (Just progPath) def
+              purity <- chooseSlide path choiceName (pdiv<>"0") bwd (Just progPath) def
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
                  Right x -> do
                    setProgress progPath bwd x
-                   chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
-            Just x -> chooseSlide path (pdiv<>"1") (Just progPath) fwd $ opt x
-       chooseSlide path pdiv bwd fwd pres
+                   chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
+            Just x -> chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
+       chooseSlide path choiceName pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
-          let thisChoice = "no"<>pdiv<>"slide"
+          let thisChoice = choiceName pdiv
               newPath = (path<>" div."<>thisChoice)
               [revertPossible, progressPossible]
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
@@ -292,9 +294,11 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          (here %~ divClass thisChoice) <$> chooseSlide newPath "" Nothing Nothing pres
-       chooseSlide _ _ _ _ (Pure x) = pure $ That x
-       chooseSlide _ _ _ _ pres
+          (here %~ divClass thisChoice)
+                  <$> chooseSlide newPath (disambiguateChoiceName choiceName)
+                           "" Nothing Nothing pres
+       chooseSlide _ _ _ _ _ (Pure x) = pure $ That x
+       chooseSlide _ _ _ _ _ pres
           = error $ "Cannot display "++outerConstructorName pres
        go :: Int -> IPresentation m r -> Html
        go _ (StaticContent conts) = conts
@@ -527,75 +531,82 @@ postChPosR = do
     if isRevert
      then mempty <$> revertProgress path
      else do
-        let go, go' :: (PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
+        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
             go crumbs path (Encaps (WithHeading _) (Identity cont))
                 = fmap Identity <$> go crumbs path cont
-            go (crumbh,crumbp) [] (Encaps ManualDivs conts)
+            go (crumbh,choiceName,crumbp) [] (Encaps ManualDivs conts)
                 = sequence <$> Map.traverseWithKey
-                     (\divid -> go (crumbh<>" div."<>divid, crumbp) []) conts
+                     (\divid -> go (crumbh<>" div."<>divid, choiceName, crumbp) []) conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
             go _ [] (Resultless c) = return $ Just ()
             go crumbs path (Resultless c) = const(Just()) <$> go crumbs path c
             go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
-            go (crumbh, crumbp) (('0':prog):path') (Dependent def _)
-                = const Nothing <$> go' (crumbh, crumbp<>"0") (prog:path') def
-            go (crumbh, crumbp) (('1':prog):path') (Dependent def opt) = do
-               key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
+            go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
+                = const Nothing <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
+            go (crumbh, choiceName, crumbp) (('1':prog):path') (Dependent def opt) = do
+               key <- lookupProgress $ crumbh <> " div."<>choiceName crumbp
                case key of
-                 Just k -> go' (crumbh, crumbp<>"1") (prog:path') $ opt k
+                 Just k -> go' (crumbh, choiceName, crumbp<>"1") (prog:path') $ opt k
                  Nothing -> do
-                   Just k <- go' (crumbh, crumbp<>"0") [] def
-                   go' (crumbh, crumbp<>"1") (prog:path') $ opt k
-            go (crumbh,crumbp) [[]] (Dependent def opt) = do
-               key <- go' (crumbh,crumbp<>"0") [[]] def
+                   Just k <- go' (crumbh, choiceName, crumbp<>"0") [] def
+                   go' (crumbh, choiceName, crumbp<>"1") (prog:path') $ opt k
+            go (crumbh,choiceName,crumbp) [[]] (Dependent def opt) = do
+               key <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
                case key of
                  Just k -> do
                    setProgress path Nothing k
-                   skipContentless (crumbh, crumbp<>"1") $ opt k
+                   skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
                    return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
-            go (crumbh, crumbp) [] (Dependent _ opt) = do
-               key <- lookupProgress $ crumbh <> " div.no"<>crumbp<>"slide"
+            go (crumbh, choiceName, crumbp) [] (Dependent _ opt) = do
+               key <- lookupProgress $ crumbh <> " div."<>choiceName crumbp
                case key of
-                 Just k -> go' (crumbh, crumbp<>"1") [] $ opt k
+                 Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
                  Nothing -> return Nothing
             go _ (dir:_) (Dependent _ _)
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
-            go (crumbh, _) (divid:path) (Encaps ManualDivs conts)
+            go (crumbh, choiceName, _) (divid:path) (Encaps ManualDivs conts)
               | Just dividt <- Txt.stripPrefix "div." $ Txt.pack divid
               , Just subSel <- Map.lookup dividt conts
-                   = fmap (Map.singleton dividt) <$> go (crumbh, "") path subSel
+                   = fmap (Map.singleton dividt) <$> go (crumbh, choiceName, "") path subSel
             go _ [] pres
                = error $ "Need further path information to extract value from a "++outerConstructorName pres
             go _ (dir:_) pres
                = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
             go' crumbs path p@(Dependent _ _)  = go crumbs path p
-            go' (crumbh,crumbp) ([]:t) p = go (crumbh<>" div.no"<>crumbp<>"slide", "") t p
-            go' (crumbh,crumbp) [] p
-             | not $ Txt.null crumbp  = go (crumbh<>" div.no"<>crumbp<>"slide", "") [] p
+            go' (crumbh,choiceName,crumbp) ([]:t) p
+                   = go ( crumbh<>" div."<>choiceName crumbp
+                        , disambiguateChoiceName choiceName
+                        , "" ) t p
+            go' (crumbh,choiceName,crumbp) [] p
+             | not $ Txt.null crumbp
+                   = go ( crumbh<>" div."<>choiceName crumbp
+                        , disambiguateChoiceName choiceName
+                        , "" ) [] p
             go' crumbs path p = go crumbs path p
-            skipContentless :: (PrPath, Text) -> IPresentation IO r -> Handler (Maybe r)
+            skipContentless :: (PrPath, Text->PrPath, Text)
+                                   -> IPresentation IO r -> Handler (Maybe r)
             skipContentless _ (Pure x) = return $ Just x
             skipContentless crumbs (Interactive p a) = do
                ll <- skipContentless crumbs p
                case ll of
                  Just _ -> Just <$> liftIO a
                  Nothing -> return Nothing
-            skipContentless (crumbh,crumbp) (Dependent def opt) = do
-               let thisDecision = crumbh <> " div.no"<>crumbp<>"slide"
+            skipContentless (crumbh,choiceName,crumbp) (Dependent def opt) = do
+               let thisDecision = crumbh <> " div."<>choiceName crumbp
                key <- lookupProgress thisDecision
                case key of
-                 Just k -> skipContentless (crumbh, crumbp<>"1") $ opt k
+                 Just k -> skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
                  Nothing -> do
-                    key' <- skipContentless (crumbh, crumbp<>"0") def
+                    key' <- skipContentless (crumbh, choiceName, crumbp<>"0") def
                     case key' of
                       Just k' -> do
                         setProgress thisDecision (Just path) k'
-                        skipContentless (crumbh, crumbp<>"1") $ opt k'
+                        skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
                       Nothing -> return Nothing
             skipContentless crumbs (Styling _ c) = skipContentless crumbs c
             skipContentless crumbs (Resultless c)
@@ -607,13 +618,19 @@ postChPosR = do
             skipContentless _ p = error
              $ "`skipContentless` does not support "++outerConstructorName p
         PresentationServer presentation _ _ <- getYesod
-        go ("","") (finePath <$> Txt.words path) presentation
+        go ("", defaultChoiceName, "") (finePath <$> Txt.words path) presentation
         return ()
  where finePath p
-        | Just prog <- Txt.stripPrefix "div.no"
+        | Just prog <- Txt.stripPrefix "div.n"
                      =<< Txt.stripSuffix "slide" p
            = Txt.unpack prog
         | otherwise  = Txt.unpack p
+
+defaultChoiceName :: Text->PrPath
+defaultChoiceName pdiv = "n"<>pdiv<>"slide"
+
+disambiguateChoiceName :: (Text->PrPath) -> (Text->PrPath)
+disambiguateChoiceName = id
 
 getStepBackR :: Handler Html
 getStepBackR = do
