@@ -83,6 +83,13 @@ main = yeamer . styling ([lucius|
      ──
      do "No, me!"
         "You've clicked."
+
+   
+   "Styling of inline elements"
+    ====== styling ([lucius| .fattened {font-weight: bold; font-style: italic} |]())`id`
+    mconcat (zipWith ($)
+              (cycle [id, (spanClass"fattened")])
+              (fromString<$>words"Click any of these words.") )
    
    
    t <- serverSide getCurrentTime

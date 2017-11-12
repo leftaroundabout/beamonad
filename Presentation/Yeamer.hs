@@ -36,7 +36,7 @@ module Presentation.Yeamer ( Presentation
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
-                           , divClass, (#%), styling
+                           , divClass, spanClass, (#%), styling
                            ) where
 
 import Yesod
@@ -81,6 +81,7 @@ import Data.Maybe
 import Data.Functor.Identity
 import Control.Monad
 import Control.Arrow (first, second)
+import Control.Applicative
 
 import Data.Function ((&))
 import Data.Tuple (swap)
@@ -98,6 +99,7 @@ import System.Posix.Files (createSymbolicLink)
 
 import GHC.Generics
 import Lens.Micro
+import Lens.Micro.TH
 import Data.Bifunctor (bimap)
 
 #if !MIN_VERSION_directory(1,3,1)
@@ -113,9 +115,15 @@ instance JSON.FromJSON PositionChange
 
 data Container t where
   WithHeading :: Html -> Container Identity
-  ManualCSSClasses :: Container (WriterT Text [])
+  ManualCSSClasses :: Container (WriterT HTMChunkK [])
   GriddedBlocks :: Container Gridded
   CustomEncapsulation :: (t Html -> Html) -> Container t
+
+data HTMChunkK = HTMDiv {_hchunkCSSClass::Text} | HTMSpan {_hchunkCSSClass::Text}
+          deriving (Generic, Eq, Ord)
+instance JSON.FromJSON HTMChunkK
+instance JSON.ToJSON HTMChunkK
+makeLenses ''HTMChunkK
 
 type Sessionable r = (ToJSON r, FromJSON r)
 
@@ -170,11 +178,13 @@ preprocPres (Encaps (CustomEncapsulation f) p)
 preprocPres (Encaps GriddedBlocks p)
            = Styling grids
            . divClass gridClass
-           . fmap (backonstruct . map (first (read . Txt.unpack) . swap) . runWriterT)
+           . fmap (backonstruct . map (first (read . Txt.unpack . _hchunkCSSClass) . swap)
+                      . runWriterT)
            . Encaps ManualCSSClasses
            $ preprocPres <$> layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p
-       layouted = WriterT $ swap . first (("autogrid-range_"<>) . idc) . snd <$> prelayed
+       layouted = WriterT $ swap . first (HTMDiv . ("autogrid-range_"<>) . idc)
+                      . snd <$> prelayed
        gridRep :: [[Text]]
        gridRep = foldr fill (replicate h $ replicate w ".") prelayed
         where fill (GridRange xb xe yb ye, (i, _)) field
@@ -207,6 +217,19 @@ preprocPres (Interactive p a) = Interactive (preprocPres p) a
 preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 
+isInline :: IPresentation m a -> Bool
+isInline (StaticContent _) = True
+isInline (Encaps ManualCSSClasses (WriterT qs)) = all (\(_,i) -> case i of
+                   HTMSpan _ -> True
+                   HTMDiv _ -> False ) qs
+isInline (Encaps _ _) = False
+isInline (Styling _ q) = isInline q
+isInline (Interactive q _) = isInline q
+isInline (Resultless q) = isInline q
+isInline (Dependent q _) = isInline q
+isInline (Deterministic _ q) = isInline q
+isInline (Pure _) = True
+
 
 getHomeR :: Handler Html
 getHomeR = do
@@ -237,7 +260,10 @@ getHomeR = do
               cellwise ManualCSSClasses
                 | WriterT contsL <- conts
                      = WriterT <$> (`traverse`contsL) `id` \(cell,i) ->
-                 (,i) <$> chooseSlide (path<>" div."<>i) choiceName "" Nothing Nothing cell
+                 (,i) <$> chooseSlide (path<>case i of
+                                 HTMDiv c -> " div."<>c
+                                 HTMSpan c -> " span."<>c
+                              ) choiceName "" Nothing Nothing cell
               cellwise _ = traverse (chooseSlide path choiceName "" Nothing Nothing) conts
        chooseSlide path choiceName "" Nothing Nothing (Interactive conts followAction) = do
            purity <- chooseSlide path choiceName "" Nothing Nothing conts
@@ -322,7 +348,9 @@ getHomeR = do
                                  ) conts
        go lvl (Encaps ManualCSSClasses conts)
            = go lvl $ Encaps (CustomEncapsulation $ \(WriterT contsrs)
-                  -> foldMap (\(c,i) -> [hamlet| <div class=#{i}> #{c} |]() )
+                  -> foldMap (\(q,i) -> case i of
+                               HTMDiv c -> [hamlet| <div class=#{c}> #{q} |]()
+                               HTMSpan c -> [hamlet| <span class=#{c}> #{q} |]())
                       $ contsrs
                  ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
@@ -334,6 +362,10 @@ preferThis (This a) = Left a
 preferThis (That b) = Right b
 preferThis (These a _) = Left a
 
+hchunkFor :: Text -> IPresentation m r -> HTMChunkK
+hchunkFor t p | isInline p  = HTMSpan t
+              | otherwise   = HTMDiv t
+
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps ManualCSSClasses (WriterT elems₀) <> Encaps ManualCSSClasses (WriterT elems₁)
@@ -341,8 +373,8 @@ instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
    where disambiguate = go 0 Map.empty
           where go _ _ [] = []
                 go i occupied ((q,c):qs)
-                 | Txt.null c || c`Map.member`occupied
-                    = let c' = Txt.pack $ "anonymousCell-"++show i
+                 | Txt.null (_hchunkCSSClass c) || c`Map.member`occupied
+                    = let c' = c & hchunkCSSClass .~ Txt.pack ("anonymousCell-"++show i)
                       in go (i+1) occupied (( fmap (fst . head . runWriterT)
                                              . Encaps ManualCSSClasses $ WriterT [(q,c)]
                                             , c' ):qs)
@@ -352,15 +384,15 @@ instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
       = Resultless $ Encaps ManualCSSClasses (discardResult<$>ps)
                SG.<> Encaps ManualCSSClasses (discardResult<$>qs)
   Resultless p@(Encaps ManualCSSClasses _) <> c
-      = Resultless p <> Resultless (Encaps ManualCSSClasses $ WriterT [(c,"")])
+      = Resultless p <> Resultless (Encaps ManualCSSClasses $ WriterT [(c,hchunkFor""c)])
   c <> Resultless p@(Encaps ManualCSSClasses _)
-      = Resultless (Encaps ManualCSSClasses $ WriterT [(c,"")]) <> Resultless p
+      = Resultless (Encaps ManualCSSClasses $ WriterT [(c,hchunkFor""c)]) <> Resultless p
   p <> q = fmap fold . Encaps ManualCSSClasses $ WriterT
-             [(p, "anonymousCell-0"), (q, "anonymousCell-1")]
+             [(p, hchunkFor"anonymousCell-0"p), (q, hchunkFor"anonymousCell-1"q)]
 instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
   mempty = Resultless $ Encaps ManualCSSClasses
-                (WriterT [] :: WriterT Text [] (IPresentation m ()))
+                (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
   sappendN _ (Resultless (Encaps GriddedBlocks l))
@@ -456,12 +488,19 @@ addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
 divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 divClass cn = fmap (fst . head . runWriterT)
-              . Encaps ManualCSSClasses . WriterT . pure . (,cn)
+              . Encaps ManualCSSClasses . WriterT . pure . (,HTMDiv cn)
+
+spanClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
+spanClass cn = fmap (fst . head . runWriterT)
+              . Encaps ManualCSSClasses . WriterT . pure . (,HTMSpan cn)
 
 infix 8 #%
--- | Assign this content a CSS class attribute. Currently a synonym of 'divClass'.
+-- | Assign this content a CSS class attribute. If the content is inline, this will
+--   be a @<span>@, else a @<div>@.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-(#%) = divClass
+c#%q
+ | isInline q  = divClass c q
+ | otherwise   = spanClass c q
 
 styling :: Css -> IPresentation m r -> IPresentation m r
 styling s (Styling s' a) = Styling (s:s') a
@@ -517,7 +556,10 @@ postChPosR = do
                 = fmap Identity <$> go crumbs path cont
             go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
                 = sequence . WriterT <$> traverse
-                     (\(c,divid) -> (,divid) <$> go (crumbh<>" div."<>divid, choiceName, crumbp) [] c)
+                     (\(c,ζ) -> (,ζ) <$> go (crumbh<>case ζ of
+                                               HTMDiv i -> " div."<>i
+                                               HTMSpan i -> " span."<>i
+                                              , choiceName, crumbp) [] c)
                      conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
             go _ [] (Resultless c) = return $ Just ()
@@ -549,7 +591,8 @@ postChPosR = do
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
             go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
-              | Just dividt <- Txt.stripPrefix "div." $ Txt.pack divid
+              | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
+                            <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
               , Just subSel <- lookup dividt $ swap<$>conts
                    = fmap (WriterT . pure . (,dividt)) <$> go (crumbh, choiceName, "") path subSel
             go _ [] pres
