@@ -20,7 +20,7 @@ library
   exposed-modules:     Presentation.Yeamer
                        Presentation.Yeamer.Maths
                        Presentation.Yeamer.Internal.Grid
-  -- other-modules:       
+  other-modules:       Control.Monad.Trans.Writer.JSONable
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.11
                        , yesod >=1.4 && <1.5
