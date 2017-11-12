@@ -70,29 +70,21 @@ main = yeamer . styling ([lucius|
    
    "Manual HTML, and cell-wise sequencing"
     ======
-    vconcat [ staticContent $ [hamlet|
+    staticContent ([hamlet|
                  <i>Static</i> text
                  <br>
                  More <b>text</b>
                  <br>
                  <em>More</em> text
-               |]()
-            , do "Click me!"
-                 "You've clicked."
-            , do "No, me!"
-                 "You've clicked."
-            ]
+               |]())
+     ──
+     do "Click me!"
+        "You've clicked."
+     ──
+     do "No, me!"
+        "You've clicked."
    
    
-   "Manual div-classes / grid layout"
-    ====== do
-     "slide"%##[["lside","rtop"]
-               ,["lside","rbot"]]
-        $  "lside"#%filling 8 "This goes on the left side"
-        <> "rtop"#%filling 6 "This goes right on top"
-        <> "rbot"#%filling 6 "This goes right down"
-
-
    t <- serverSide getCurrentTime
    "The current time at the server"
     ====== do

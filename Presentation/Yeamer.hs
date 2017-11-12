@@ -33,9 +33,9 @@ module Presentation.Yeamer ( Presentation
                            -- ** Images
                            , imageFromFile
                            -- * Structure / composition
-                           , addHeading, (======), vconcat, discardResult
+                           , addHeading, (======), discardResult
                            -- * CSS
-                           , divClass, (#%), (%##), styling
+                           , divClass, (#%), styling
                            ) where
 
 import Yesod
@@ -449,19 +449,6 @@ addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 divClass cn = fmap (Map.!cn) . Encaps ManualDivs . Map.singleton cn
 
--- | Make a CSS grid, with layout as given in the names matrix.
-infix 9 %##
-(%##) :: Sessionable r => Text -> [[Text]] -> IPresentation m r -> IPresentation m r
-cn %## grid = divClass cn . Styling [[lucius|
-           div .#{cn} {
-             display: grid;
-             grid-template-areas: #{areas};
-             grid-area: #{cn};
-           }
-        |]()]
- where areas = fold ["\""<>Txt.intercalate " " line<>"\" "
-                    | line <- grid ]
- 
 infix 8 #%
 -- | Make this a named grid area.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
@@ -480,17 +467,6 @@ styling s a = Styling [s] a
 
 staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
-
-vconcat :: (Monoid r, Sessionable r) => [IPresentation m r] -> IPresentation m r
-vconcat l = fmap (\rs -> fold [rs Map.! i | i<-indices])
-             . divClass "vertical-concatenation" . Encaps ManualDivs
-             . Map.fromList
-             $ zipWith (\i c -> ("vConcat-item"<>i, c)) indices l
- where indices = showIndex <$> [0 .. ll-1]
-       showIndex i = Txt.pack $ replicate (lll - length si) '0' ++ si
-        where si = show i
-       ll = length l
-       lll = length $ show ll
 
 infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
