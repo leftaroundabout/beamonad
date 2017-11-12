@@ -18,9 +18,15 @@ module Control.Monad.Trans.Writer.JSONable where
 
 import Data.Aeson
 import GHC.Generics
+import Data.Semigroup
 
 
 data WriterT l m a = WriterT { runWriterT :: m (a, l) }
   deriving (Functor, Foldable, Traversable, Generic)
 instance (ToJSON (m (a,l))) => ToJSON (WriterT l m a)
 instance (FromJSON (m (a,l))) => FromJSON (WriterT l m a)
+instance (Semigroup (m (a,l))) => Semigroup (WriterT l m a) where
+  WriterT x <> WriterT y = WriterT $ x<>y
+instance (Semigroup (m (a,l)), Monoid (m (a,l))) => Monoid (WriterT l m a) where
+  mempty = WriterT mempty
+  mappend = (<>)

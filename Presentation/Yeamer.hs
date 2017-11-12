@@ -21,6 +21,7 @@
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE UnicodeSyntax          #-}
+{-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE ConstraintKinds        #-}
 
 module Presentation.Yeamer ( Presentation
@@ -71,6 +72,7 @@ import qualified Text.TeXMath as MathML
 import qualified Text.XML.Light as XML
 
 import Data.Foldable (fold)
+import Control.Monad.Trans.Writer.JSONable
 import Data.These
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
@@ -81,6 +83,7 @@ import Control.Monad
 import Control.Arrow (first, second)
 
 import Data.Function ((&))
+import Data.Tuple (swap)
 
 import System.FilePath (takeFileName, takeExtension, dropExtension, (<.>), (</>))
 import System.Directory ( doesPathExist, makeAbsolute
@@ -110,7 +113,7 @@ instance JSON.FromJSON PositionChange
 
 data Container t where
   WithHeading :: Html -> Container Identity
-  ManualDivs :: Container (Map Text)
+  ManualCSSClasses :: Container (WriterT Text [])
   GriddedBlocks :: Container Gridded
   CustomEncapsulation :: (t Html -> Html) -> Container t
 
@@ -161,17 +164,17 @@ preprocPres (StaticContent c) = StaticContent c
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) p) = Encaps (WithHeading h) $ preprocPres<$>p
-preprocPres (Encaps ManualDivs p) = Encaps ManualDivs $ preprocPres<$>p
+preprocPres (Encaps ManualCSSClasses p) = Encaps ManualCSSClasses $ preprocPres<$>p
 preprocPres (Encaps (CustomEncapsulation f) p)
                 = Encaps (CustomEncapsulation f) $ preprocPres<$>p
 preprocPres (Encaps GriddedBlocks p)
            = Styling grids
            . divClass gridClass
-           . fmap (backonstruct . map (first $ read . Txt.unpack) . Map.toList)
-           . Encaps ManualDivs
+           . fmap (backonstruct . map (first (read . Txt.unpack) . swap) . runWriterT)
+           . Encaps ManualCSSClasses
            $ preprocPres <$> layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p
-       layouted = Map.fromList $ first (("autogrid-range_"<>) . idc) . snd <$> prelayed
+       layouted = WriterT $ swap . first (("autogrid-range_"<>) . idc) . snd <$> prelayed
        gridRep :: [[Text]]
        gridRep = foldr fill (replicate h $ replicate w ".") prelayed
         where fill (GridRange xb xe yb ye, (i, _)) field
@@ -231,8 +234,10 @@ getHomeR = do
                                 $ fmap (maybe mempty id . (^?here)) sq
                These _ p's -> (`These`p's) . discardResult $ Encaps f
                                 $ fmap (maybe mempty id . (^?here)) sq
-              cellwise ManualDivs = (`Map.traverseWithKey`conts) `id` \i cell ->
-                 chooseSlide (path<>" div."<>i) choiceName "" Nothing Nothing cell
+              cellwise ManualCSSClasses
+                | WriterT contsL <- conts
+                     = WriterT <$> (`traverse`contsL) `id` \(cell,i) ->
+                 (,i) <$> chooseSlide (path<>" div."<>i) choiceName "" Nothing Nothing cell
               cellwise _ = traverse (chooseSlide path choiceName "" Nothing Nothing) conts
        chooseSlide path choiceName "" Nothing Nothing (Interactive conts followAction) = do
            purity <- chooseSlide path choiceName "" Nothing Nothing conts
@@ -315,10 +320,10 @@ getHomeR = do
                                     -> HTM.div HTM.! HTM.class_ "headed-container"
                                          $ hh h <> contsr
                                  ) conts
-       go lvl (Encaps ManualDivs conts)
-           = go lvl $ Encaps (CustomEncapsulation $ \contsrs
-                  -> foldMap (\(i,c) -> [hamlet| <div class=#{i}> #{c} |]() )
-                      $ Map.toAscList contsrs
+       go lvl (Encaps ManualCSSClasses conts)
+           = go lvl $ Encaps (CustomEncapsulation $ \(WriterT contsrs)
+                  -> foldMap (\(c,i) -> [hamlet| <div class=#{i}> #{c} |]() )
+                      $ contsrs
                  ) conts
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
@@ -331,28 +336,17 @@ preferThis (These a _) = Left a
 
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
-  Encaps ManualDivs elems₀ <> Encaps ManualDivs elems₁
-     = Encaps ManualDivs . goUnion elems₀ 0 $ Map.toList elems₁
-   where goUnion :: Sessionable ρ
-               => Map Text (IPresentation m ρ) -> Int -> [(Text,IPresentation m ρ)]
-                      -> Map Text (IPresentation m ρ)
-         goUnion settled _ []
-                        = settled
-         goUnion settled iAnonym ((k,e):es)
-          | k `Map.notMember` settled
-                        = goUnion (Map.insert k e settled) iAnonym es
-          | k' <- "anonymousCell-"<>Txt.pack(show iAnonym)
-          , k'`Map.notMember` settled
-                        = goUnion (Map.insert k' (divClass k e) settled) iAnonym es
-         goUnion s i es = goUnion s (i+1) es
-  Resultless (Encaps ManualDivs ps) <> Resultless (Encaps ManualDivs qs)
-      = Resultless $ Encaps ManualDivs (discardResult<$>ps)
-               SG.<> Encaps ManualDivs (discardResult<$>qs)
-  p <> q = fmap fold . Encaps ManualDivs $ Map.fromList
-             [("anonymousCell-0", p), ("anonymousCell-1", q)]
+  Encaps ManualCSSClasses (WriterT elems₀) <> Encaps ManualCSSClasses (WriterT elems₁)
+     = Encaps ManualCSSClasses . WriterT $ elems₀ ++ elems₁
+  Resultless (Encaps ManualCSSClasses ps) <> Resultless (Encaps ManualCSSClasses qs)
+      = Resultless $ Encaps ManualCSSClasses (discardResult<$>ps)
+               SG.<> Encaps ManualCSSClasses (discardResult<$>qs)
+  p <> q = fmap fold . Encaps ManualCSSClasses $ WriterT
+             [(p, "anonymousCell-0"), (q, "anonymousCell-1")]
 instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
-  mempty = Resultless $ Encaps ManualDivs (Map.empty :: Map Text (IPresentation m ()))
+  mempty = Resultless $ Encaps ManualCSSClasses
+                (WriterT [] :: WriterT Text [] (IPresentation m ()))
 
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
   sappendN _ (Resultless (Encaps GriddedBlocks l))
@@ -379,7 +373,7 @@ outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
 outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
-outerConstructorName (Encaps ManualDivs _) = "Encaps ManualDivs"
+outerConstructorName (Encaps ManualCSSClasses _) = "Encaps ManualCSSClasses"
 outerConstructorName (Encaps GriddedBlocks _) = "Encaps GriddedBlocks"
 outerConstructorName (Pure _) = "Pure"
 outerConstructorName (Deterministic _ _) = "Deterministic"
@@ -421,13 +415,13 @@ instance Monad (IPresentation m) where
   Styling s (Styling s' x) >>= f = Styling (s++s') x >>= f
   Styling s (Encaps (WithHeading h) x) >>= f
       = Dependent (Styling s (Encaps (WithHeading h) x)) f
-  Styling s (Encaps ManualDivs x) >>= f
-      = Dependent (Styling s (Encaps ManualDivs x)) f
+  Styling s (Encaps ManualCSSClasses x) >>= f
+      = Dependent (Styling s (Encaps ManualCSSClasses x)) f
   Styling s (Deterministic g x) >>= f = Styling s x >>= f . g
   Styling s (Interactive p o) >>= f = Dependent (Interactive (Styling s p) o) f
   Styling s (Dependent p g) >>= f = Dependent (Styling s p) $ Styling s . g >=> f
   Encaps (WithHeading h) p >>= f = Dependent (Encaps (WithHeading h) p) f
-  Encaps ManualDivs ps >>= f = Dependent (Encaps ManualDivs ps) f
+  Encaps ManualCSSClasses ps >>= f = Dependent (Encaps ManualCSSClasses ps) f
   Pure x >>= f = f x
   Deterministic g p >>= f = p >>= f . g
   Interactive p q >>= f = Dependent (Interactive p q) f
@@ -447,19 +441,13 @@ addHeading :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
 addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
 
 divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-divClass cn = fmap (Map.!cn) . Encaps ManualDivs . Map.singleton cn
+divClass cn = fmap (fst . head . runWriterT)
+              . Encaps ManualCSSClasses . WriterT . pure . (,cn)
 
 infix 8 #%
--- | Make this a named grid area.
+-- | Assign this content a CSS class attribute. Currently a synonym of 'divClass'.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-areaName#%Encaps ManualDivs dns
- | [(cn,q)]<-Map.toList dns   = Encaps ManualDivs . Map.singleton cn $ Styling [[lucius|
-           div .#{cn} {
-              grid-area: #{areaName}
-           }
-       |]()] q
-areaName#%c = fmap (Map.!areaName) $ areaName
-                #% Encaps ManualDivs (Map.singleton areaName c)
+(#%) = divClass
 
 styling :: Css -> IPresentation m r -> IPresentation m r
 styling s (Styling s' a) = Styling (s:s') a
@@ -513,9 +501,10 @@ postChPosR = do
             go _ [] (Interactive _ q) = Just <$> liftIO q
             go crumbs path (Encaps (WithHeading _) (Identity cont))
                 = fmap Identity <$> go crumbs path cont
-            go (crumbh,choiceName,crumbp) [] (Encaps ManualDivs conts)
-                = sequence <$> Map.traverseWithKey
-                     (\divid -> go (crumbh<>" div."<>divid, choiceName, crumbp) []) conts
+            go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
+                = sequence . WriterT <$> traverse
+                     (\(c,divid) -> (,divid) <$> go (crumbh<>" div."<>divid, choiceName, crumbp) [] c)
+                     conts
             go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
             go _ [] (Resultless c) = return $ Just ()
             go crumbs path (Resultless c) = const(Just()) <$> go crumbs path c
@@ -545,10 +534,10 @@ postChPosR = do
             go _ (dir:_) (Dependent _ _)
                = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
-            go (crumbh, choiceName, _) (divid:path) (Encaps ManualDivs conts)
+            go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
               | Just dividt <- Txt.stripPrefix "div." $ Txt.pack divid
-              , Just subSel <- Map.lookup dividt conts
-                   = fmap (Map.singleton dividt) <$> go (crumbh, choiceName, "") path subSel
+              , Just subSel <- lookup dividt $ swap<$>conts
+                   = fmap (WriterT . pure . (,dividt)) <$> go (crumbh, choiceName, "") path subSel
             go _ [] pres
                = error $ "Need further path information to extract value from a "++outerConstructorName pres
             go _ (dir:_) pres
