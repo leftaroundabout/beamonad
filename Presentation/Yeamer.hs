@@ -337,10 +337,24 @@ preferThis (These a _) = Left a
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
   Encaps ManualCSSClasses (WriterT elems₀) <> Encaps ManualCSSClasses (WriterT elems₁)
-     = Encaps ManualCSSClasses . WriterT $ elems₀ ++ elems₁
+     = Encaps ManualCSSClasses . WriterT . disambiguate $ elems₀ ++ elems₁
+   where disambiguate = go 0 Map.empty
+          where go _ _ [] = []
+                go i occupied ((q,c):qs)
+                 | Txt.null c || c`Map.member`occupied
+                    = let c' = Txt.pack $ "anonymousCell-"++show i
+                      in go (i+1) occupied (( fmap (fst . head . runWriterT)
+                                             . Encaps ManualCSSClasses $ WriterT [(q,c)]
+                                            , c' ):qs)
+                 | otherwise
+                    = (q,c) : go (i+1) (Map.insert c () occupied) qs
   Resultless (Encaps ManualCSSClasses ps) <> Resultless (Encaps ManualCSSClasses qs)
       = Resultless $ Encaps ManualCSSClasses (discardResult<$>ps)
                SG.<> Encaps ManualCSSClasses (discardResult<$>qs)
+  Resultless p@(Encaps ManualCSSClasses _) <> c
+      = Resultless p <> Resultless (Encaps ManualCSSClasses $ WriterT [(c,"")])
+  c <> Resultless p@(Encaps ManualCSSClasses _)
+      = Resultless (Encaps ManualCSSClasses $ WriterT [(c,"")]) <> Resultless p
   p <> q = fmap fold . Encaps ManualCSSClasses $ WriterT
              [(p, "anonymousCell-0"), (q, "anonymousCell-1")]
 instance ∀ m . Monoid (IPresentation m ()) where
