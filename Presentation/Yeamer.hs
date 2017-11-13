@@ -499,8 +499,8 @@ infix 8 #%
 --   be a @<span>@, else a @<div>@.
 (#%) :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 c#%q
- | isInline q  = divClass c q
- | otherwise   = spanClass c q
+ | isInline q  = spanClass c q
+ | otherwise   = divClass c q
 
 styling :: Css -> IPresentation m r -> IPresentation m r
 styling s (Styling s' a) = Styling (s:s') a

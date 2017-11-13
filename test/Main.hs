@@ -88,7 +88,7 @@ main = yeamer . styling ([lucius|
    "Styling of inline elements"
     ====== styling ([lucius| .fattened {font-weight: bold; font-style: italic} |]())`id`
     mconcat (zipWith ($)
-              (cycle [id, (spanClass"fattened")])
+              (cycle [id, ("fattened"#%)])
               (fromString<$>words"Click any of these words.") )
    
    
