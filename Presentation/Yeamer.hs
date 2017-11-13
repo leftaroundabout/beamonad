@@ -279,7 +279,7 @@ getHomeR = do
            purity <- chooseSlide path choiceName "" Nothing Nothing conts
            pure $ bimap discardResult f purity
        chooseSlide path choiceName pdiv bwd fwd (Dependent def opt) = do
-          let progPath = path<>" div."<>choiceName pdiv
+          let progPath = path<>" span."<>choiceName pdiv
           positionCh <- lookupProgress progPath
           case positionCh of
             Nothing -> do
@@ -293,7 +293,7 @@ getHomeR = do
        chooseSlide path choiceName pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
           let thisChoice = choiceName pdiv
-              newPath = (path<>" div."<>thisChoice)
+              newPath = (path<>" span."<>thisChoice)
               [revertPossible, progressPossible]
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
               [previous,next] = maybe "null" (("'"<>).(<>"'")) <$> [bwd, fwd]
@@ -325,7 +325,7 @@ getHomeR = do
                      setTimeout(function() {location.reload();}, 50);
                  })
                |]
-          (here %~ divClass thisChoice)
+          (here %~ spanClass thisChoice)
                   <$> chooseSlide newPath (disambiguateChoiceName choiceName)
                            "" Nothing Nothing pres
        chooseSlide _ _ _ _ _ (Pure x) = pure $ That x
@@ -572,7 +572,7 @@ postChPosR = do
             go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
                 = const Nothing <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
             go (crumbh, choiceName, crumbp) (('1':prog):path') (Dependent def opt) = do
-               key <- lookupProgress $ crumbh <> " div."<>choiceName crumbp
+               key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
                case key of
                  Just k -> go' (crumbh, choiceName, crumbp<>"1") (prog:path') $ opt k
                  Nothing -> do
@@ -587,7 +587,7 @@ postChPosR = do
                    return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
             go (crumbh, choiceName, crumbp) [] (Dependent _ opt) = do
-               key <- lookupProgress $ crumbh <> " div."<>choiceName crumbp
+               key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
                case key of
                  Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
                  Nothing -> return Nothing
@@ -605,12 +605,12 @@ postChPosR = do
                = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
             go' crumbs path p@(Dependent _ _)  = go crumbs path p
             go' (crumbh,choiceName,crumbp) ([]:t) p
-                   = go ( crumbh<>" div."<>choiceName crumbp
+                   = go ( crumbh<>" span."<>choiceName crumbp
                         , disambiguateChoiceName choiceName
                         , "" ) t p
             go' (crumbh,choiceName,crumbp) [] p
              | not $ Txt.null crumbp
-                   = go ( crumbh<>" div."<>choiceName crumbp
+                   = go ( crumbh<>" span."<>choiceName crumbp
                         , disambiguateChoiceName choiceName
                         , "" ) [] p
             go' crumbs path p = go crumbs path p
@@ -623,7 +623,7 @@ postChPosR = do
                  Just _ -> Just <$> liftIO a
                  Nothing -> return Nothing
             skipContentless (crumbh,choiceName,crumbp) (Dependent def opt) = do
-               let thisDecision = crumbh <> " div."<>choiceName crumbp
+               let thisDecision = crumbh <> " span."<>choiceName crumbp
                key <- lookupProgress thisDecision
                case key of
                  Just k -> skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
@@ -648,7 +648,7 @@ postChPosR = do
         return ()
  where finePath p
         | Just prog <- fmap (Txt.dropWhile (=='n'))
-                    $ Txt.stripPrefix "div."
+                    $ Txt.stripPrefix "span."
                      =<< Txt.stripSuffix "slide" p
            = Txt.unpack prog
         | otherwise  = Txt.unpack p
