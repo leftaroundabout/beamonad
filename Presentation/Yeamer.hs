@@ -349,10 +349,14 @@ getHomeR = do
        go lvl (Encaps ManualCSSClasses conts)
            = go lvl $ Encaps (CustomEncapsulation $ \(WriterT contsrs)
                   -> foldMap (\(q,i) -> case i of
-                               HTMDiv c -> [hamlet| <div class=#{c}> #{q} |]()
-                               HTMSpan c -> [hamlet| <span class=#{c}> #{q} |]())
+                               HTMDiv c -> [hamlet| <div class=#{withSupclass c}> #{q} |]()
+                               HTMSpan c -> [hamlet| <span class=#{withSupclass c}> #{q} |]())
                       $ contsrs
                  ) conts
+        where withSupclass c
+               | Just _ <- Txt.stripPrefix "autogrid_" c
+                            = "autogrid "<>c
+               | otherwise  = c
        go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
