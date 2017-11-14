@@ -90,11 +90,11 @@ import System.FilePath (takeFileName, takeExtension, dropExtension, (<.>), (</>)
 import System.Directory ( doesPathExist, makeAbsolute
                         , createDirectoryIfMissing
 #if MIN_VERSION_directory(1,3,1)
-                        , createFileLink )
+                        , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget )
 #endif
                         )
 #if !MIN_VERSION_directory(1,3,1)
-import System.Posix.Files (createSymbolicLink)
+import System.Posix.Files (createSymbolicLink, readSymbolicLink)
 #endif
 
 import GHC.Generics
@@ -104,6 +104,8 @@ import Data.Bifunctor (bimap)
 
 #if !MIN_VERSION_directory(1,3,1)
 createFileLink = createSymbolicLink
+getSymbolicLinkTarget = readSymbolicLink
+pathIsSymbolicLink _ = pure True
 #endif
 
 type PrPath = Text
@@ -535,13 +537,24 @@ imageFromFile :: FilePath -> IPresentation IO ()
 imageFromFile file = do
    let prepareServing linkPath = do
          isOccupied <- doesPathExist linkPath
+         absOrig <- makeAbsolute file
+         let linkFname = "pseudostatic"</>takeFileName linkPath
+             makeThisLink = do
+               createFileLink absOrig linkPath
+               return linkFname
+             disambiguate = prepareServing
+                  $ dropExtension linkPath <> "~1" <.> takeExtension linkPath
          if isOccupied
-            then prepareServing $ dropExtension linkPath <> "~1" <.> takeExtension linkPath
-            else do
-              absOrig <- makeAbsolute file
-              createFileLink absOrig linkPath
-              let linkFname = takeFileName linkPath
-              return $ "pseudostatic"</>linkFname
+            then do
+              isSymlk <- pathIsSymbolicLink linkPath
+              if isSymlk
+                then do
+                  existingTgt <- getSymbolicLinkTarget linkPath
+                  if existingTgt/=absOrig
+                   then disambiguate
+                   else return linkFname
+                else disambiguate
+            else makeThisLink
    imgCode <- serverSide . prepareServing $ pStatDir</>takeFileName file
    StaticContent $ [hamlet| <img src=#{imgCode}> |]()
        
