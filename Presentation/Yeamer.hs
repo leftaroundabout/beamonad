@@ -47,6 +47,7 @@ import qualified Data.Text.Lazy as Txt (toStrict)
 import Data.Text (Text)
 import Data.String (IsString (..))
 import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
@@ -58,7 +59,7 @@ import Presentation.Yeamer.Internal.Grid
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
 
-import Yesod.Static
+import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
 import qualified Language.Javascript.JQuery as JQuery
 import Language.Haskell.TH.Syntax (Exp(LitE), Lit(StringL), runIO)
@@ -535,15 +536,16 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
 
 imageFromFile :: FilePath -> IPresentation IO ()
 imageFromFile file = do
-   let prepareServing linkPath = do
+   let prepareServing hashLen completeHash = do
+         let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
          absOrig <- makeAbsolute file
          let linkFname = "pseudostatic"</>takeFileName linkPath
              makeThisLink = do
                createFileLink absOrig linkPath
                return linkFname
-             disambiguate = prepareServing
-                  $ dropExtension linkPath <> "~1" <.> takeExtension linkPath
+             disambiguate
+              | hashLen < length linkPath  = prepareServing (hashLen+1) completeHash
          if isOccupied
             then do
               isSymlk <- pathIsSymbolicLink linkPath
@@ -555,7 +557,8 @@ imageFromFile file = do
                    else return linkFname
                 else disambiguate
             else makeThisLink
-   imgCode <- serverSide . prepareServing $ pStatDir</>takeFileName file
+   imgCode <- serverSide . prepareServing 1 . base64md5 . BSL.fromStrict . BC8.pack
+                 $ show file
    StaticContent $ [hamlet| <img src=#{imgCode}> |]()
        
 
