@@ -21,6 +21,7 @@ library
                        Presentation.Yeamer.Maths
                        Presentation.Yeamer.Internal.Grid
   other-modules:       Control.Monad.Trans.Writer.JSONable
+                       Data.Traversable.Redundancy
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.11
                        , yesod >=1.4 && <1.5
@@ -31,6 +32,7 @@ library
                        , blaze-html
                        , semigroups
                        , numbered-semigroups >=0.1 && <0.2
+                       , transformers
                        , TeX-my-math >=0.201.0.0 && < 0.202
                        , dumb-cas
                        , HaTeX
@@ -45,6 +47,7 @@ library
                        , aeson 
                        , filepath
                        , template-haskell
+                       , vector
   if os(windows)
      build-depends:    directory >= 1.3.1.0
   else
