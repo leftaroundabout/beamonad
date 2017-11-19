@@ -46,6 +46,7 @@ import qualified Data.Text as Txt
 import qualified Data.Text.Lazy as Txt (toStrict)
 import Data.Text (Text)
 import Data.String (IsString (..))
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Aeson as JSON
@@ -54,6 +55,7 @@ import qualified Text.Blaze.Html5.Attributes as HTM
 import qualified Text.Blaze.Html.Renderer.Text as HTMText
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (Css)
@@ -73,6 +75,7 @@ import qualified Text.TeXMath as MathML
 import qualified Text.XML.Light as XML
 
 import Data.Foldable (fold)
+import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
 import Data.These
 import qualified Data.Semigroup as SG
@@ -702,6 +705,16 @@ lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
 
 setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
 setProgress path skippedFrom prog = do
+   progKeyRsr :: Arr.Vector String
+       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+   progs :: Map.Map Text String
+       <- maybe Map.empty (fmap (progKeyRsr Arr.!))
+             <$> lookupSessionJSON "progress"
+   let progs' = Map.insert path (BC8.unpack . BSL.toStrict $ JSON.encode prog) progs
+       (compressedProgs,progKeyRsr') = rmRedundancy progs'
+   setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
+   setSessionJSON "progress" $ compressedProgs
+                  
    let stepPID = "progress"<>path
    setSessionJSON stepPID prog
    undoStack <- (JSON.decode . BSL.fromStrict =<<) <$> lookupSessionBS "undo-stack"
@@ -712,6 +725,16 @@ setProgress path skippedFrom prog = do
 
 revertProgress :: MonadHandler m => PrPath -> m Bool
 revertProgress path = do
+   progKeyRsr :: Arr.Vector String
+       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+   progs :: Map.Map Text String
+       <- maybe Map.empty (fmap (progKeyRsr Arr.!))
+             <$> lookupSessionJSON "progress"
+   let progs' = Map.delete path progs
+       (compressedProgs,progKeyRsr') = rmRedundancy progs'
+   setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
+   setSessionJSON "progress" $ compressedProgs
+                  
    let stepPID = "progress"<>path
    wasPresent <- isJust <$> lookupSessionBS stepPID
    deleteSession stepPID
