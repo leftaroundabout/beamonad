@@ -21,6 +21,7 @@ library
                        Presentation.Yeamer.Maths
                        Presentation.Yeamer.Internal.Grid
   other-modules:       Control.Monad.Trans.Writer.JSONable
+                       Presentation.Yeamer.Internal.PrPathStepCompression
                        Data.Traversable.Redundancy
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.11
@@ -45,6 +46,7 @@ library
                        , text 
                        , bytestring 
                        , aeson 
+                       , zlib
                        , filepath
                        , template-haskell
                        , vector

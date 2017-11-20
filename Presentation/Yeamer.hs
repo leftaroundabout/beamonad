@@ -44,6 +44,7 @@ import Yesod.Form.Jquery
 
 import qualified Data.Text as Txt
 import qualified Data.Text.Lazy as Txt (toStrict)
+import qualified Data.Text.Encoding as Txt
 import Data.Text (Text)
 import Data.String (IsString (..))
 import Data.ByteString (ByteString)
@@ -53,10 +54,12 @@ import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
 import qualified Text.Blaze.Html.Renderer.Text as HTMText
+import Presentation.Yeamer.Internal.PrPathStepCompression
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
+import qualified Data.Binary as Bin
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
@@ -685,7 +688,8 @@ disambiguateChoiceName = (.("n"<>))
 getStepBackR :: Handler Html
 getStepBackR = do
     progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-steps"
+       <- Arr.fromList . maybe [] decompressPrPathSteps
+            <$> lookupSessionBS "progress-steps"
     undoStack <- fmap (map $ id &&& Txt.unwords . map (progStepRsr Arr.!))
                    <$> lookupSessionJSON "undo-stack"
     mapM undo undoStack
@@ -705,7 +709,8 @@ getResetR = do
 lookupProgress :: (MonadHandler m, JSON.FromJSON x) => PrPath -> m (Maybe x)
 lookupProgress path = do
    progStepRsr :: Map Text Int
-       <- Map.fromList . maybe [] (`zip`[0..]) <$> lookupSessionJSON "progress-steps"
+       <- Map.fromList . maybe [] ((`zip`[0..]) . decompressPrPathSteps)
+                <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
        <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
    let decode bs
@@ -721,7 +726,8 @@ lookupProgress path = do
 setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
 setProgress path skippedFrom prog = do
    progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-steps"
+       <- Arr.fromList . maybe [] decompressPrPathSteps
+                 <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
        <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
    progs :: Map.Map [Text] String
@@ -734,11 +740,12 @@ setProgress path skippedFrom prog = do
                   = rmRedundancy . ListT . WriterT $ Map.toList progs'
        (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
    setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionJSON "progress-steps" $ Arr.toList progStepRsr'
+   setSessionBS "progress-steps" . compressPrPathSteps
+                    $ Arr.toList progStepRsr'
    setSessionJSON "progress" $ compressedProgs
 
-   let Just compressedPath
-           = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0::Int ..]))
+   let Just (compressedPath :: [Int])
+           = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0..]))
                       (Txt.words path)
                   
    undoStack <- (JSON.decode . BSL.fromStrict =<<) <$> lookupSessionBS "undo-stack"
@@ -750,7 +757,8 @@ setProgress path skippedFrom prog = do
 revertProgress :: MonadHandler m => PrPath -> m Bool
 revertProgress path = do
    progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-steps"
+       <- Arr.fromList . maybe [] decompressPrPathSteps
+                 <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
        <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
    progs :: Map.Map [Text] String
@@ -762,7 +770,8 @@ revertProgress path = do
                   = rmRedundancy . ListT . WriterT $ Map.toList progs'
        (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
    setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionJSON "progress-steps" $ Arr.toList progStepRsr'
+   setSessionBS "progress-steps" . compressPrPathSteps
+                    $ Arr.toList progStepRsr'
    setSessionJSON "progress" $ compressedProgs
                   
    let skipOrigKey = "progress-skip-origin"<>path
