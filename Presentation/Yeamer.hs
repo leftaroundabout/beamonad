@@ -696,11 +696,15 @@ getResetR = do
     redirect HomeR
 
 lookupProgress :: (MonadHandler m, JSON.FromJSON x) => PrPath -> m (Maybe x)
-lookupProgress path = fmap decode <$> lookupSessionBS ("progress"<>path)
- where decode bs
+lookupProgress path = do
+   progKeyRsr :: Arr.Vector String
+       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+   let decode bs
         | Just decoded <- JSON.decode (BSL.fromStrict bs) = decoded
         | otherwise = error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
+   fmap (decode . BC8.pack . (progKeyRsr Arr.!)) . (>>= Map.lookup path)
+             <$> lookupSessionJSON "progress"
 
 
 setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
@@ -735,14 +739,11 @@ revertProgress path = do
    setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
    setSessionJSON "progress" $ compressedProgs
                   
-   let stepPID = "progress"<>path
-   wasPresent <- isJust <$> lookupSessionBS stepPID
-   deleteSession stepPID
    let skipOrigKey = "progress-skip-origin"<>path
    lookupSession skipOrigKey >>= mapM_ `id` \skippedFrom -> do
         revertProgress skippedFrom
    deleteSession skipOrigKey
-   return wasPresent
+   return $ path`Map.member`progs
 
 lookupSessionJSON :: (MonadHandler m, JSON.FromJSON a) => Text -> m (Maybe a)
 lookupSessionJSON = fmap (JSON.decode . BSL.fromStrict =<<) . lookupSessionBS
