@@ -299,7 +299,7 @@ getHomeR = do
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
                  Right x -> do
-                   setProgress progPath bwd x
+                   setProgress progPath x
                    chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
             Just x -> chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
        chooseSlide path choiceName pdiv bwd fwd pres
@@ -608,7 +608,7 @@ postChPosR = do
                key <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
                case key of
                  Just k -> do
-                   setProgress path Nothing k
+                   setProgress path k
                    skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
                    return Nothing
                  Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
@@ -657,7 +657,7 @@ postChPosR = do
                     key' <- skipContentless (crumbh, choiceName, crumbp<>"0") def
                     case key' of
                       Just k' -> do
-                        setProgress thisDecision (Just path) k'
+                        setProgress thisDecision k'
                         skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
                       Nothing -> return Nothing
             skipContentless crumbs (Styling _ c) = skipContentless crumbs c
@@ -723,8 +723,8 @@ lookupProgress path = do
      Nothing -> return Nothing
 
 
-setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> Maybe PrPath -> x -> m ()
-setProgress path skippedFrom prog = do
+setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> x -> m ()
+setProgress path prog = do
    progStepRsr :: Arr.Vector Text
        <- Arr.fromList . maybe [] decompressPrPathSteps
                  <$> lookupSessionBS "progress-steps"
@@ -752,7 +752,6 @@ setProgress path skippedFrom prog = do
    setSessionJSON "undo-stack" $ case undoStack of
      Nothing -> [compressedPath]
      Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps
-   forM_ skippedFrom $ setSession ("progress-skip-origin"<>path)
 
 revertProgress :: MonadHandler m => PrPath -> m Bool
 revertProgress path = do
@@ -774,10 +773,6 @@ revertProgress path = do
                     $ Arr.toList progStepRsr'
    setSessionJSON "progress" $ compressedProgs
                   
-   let skipOrigKey = "progress-skip-origin"<>path
-   lookupSession skipOrigKey >>= mapM_ `id` \skippedFrom -> do
-        revertProgress skippedFrom
-   deleteSession skipOrigKey
    return $ Txt.words path`Map.member`progs
 
 lookupSessionJSON :: (MonadHandler m, JSON.FromJSON a) => Text -> m (Maybe a)

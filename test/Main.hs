@@ -92,9 +92,9 @@ main = yeamer . styling ([lucius|
               (fromString<$>words"Click any of these words.") )
    
    
-   t <- serverSide getCurrentTime
    "The current time at the server"
     ====== do
+     t <- serverSide getCurrentTime
      fromString $ show t
 
 
