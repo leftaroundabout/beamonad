@@ -91,7 +91,8 @@ import Control.Applicative
 import Data.Function ((&))
 import Data.Tuple (swap)
 
-import System.FilePath (takeFileName, takeExtension, dropExtension, (<.>), (</>))
+import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtension
+                       , (<.>), (</>) )
 import System.Directory ( doesPathExist, makeAbsolute
                         , createDirectoryIfMissing
 #if MIN_VERSION_directory(1,3,1)
@@ -290,6 +291,7 @@ getHomeR = do
           positionCh <- lookupProgress progPath
           case positionCh of
             Nothing -> do
+              liftIO . putStrLn $ "Not enter '"++Txt.unpack progPath++"'"
               purity <- chooseSlide path choiceName (pdiv<>"0") bwd (Just progPath) def
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
@@ -544,10 +546,10 @@ imageFromFile file = do
          let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
          absOrig <- makeAbsolute file
-         let linkFname = "pseudostatic"</>takeFileName linkPath
+         let codedName = takeBaseName linkPath
              makeThisLink = do
                createFileLink absOrig linkPath
-               return linkFname
+               return codedName
              disambiguate
               | hashLen < length linkPath  = prepareServing (hashLen+1) completeHash
          if isOccupied
@@ -558,12 +560,13 @@ imageFromFile file = do
                   existingTgt <- getSymbolicLinkTarget linkPath
                   if existingTgt/=absOrig
                    then disambiguate
-                   else return linkFname
+                   else return codedName
                 else disambiguate
             else makeThisLink
    imgCode <- serverSide . prepareServing 1 . base64md5 . BSL.fromStrict . BC8.pack
                  $ show file
-   StaticContent $ [hamlet| <img src=#{imgCode}> |]()
+   let servableFile = "pseudostatic"</>imgCode<.>takeExtension file
+    in StaticContent $ [hamlet| <img src=#{servableFile}> |]()
        
 
 postChPosR :: Handler ()
