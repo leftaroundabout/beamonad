@@ -50,6 +50,7 @@ import Data.String (IsString (..))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BC8
+import Data.Flat (Flat, flat, unflat)
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
@@ -691,14 +692,14 @@ getStepBackR = do
        <- Arr.fromList . maybe [] decompressPrPathSteps
             <$> lookupSessionBS "progress-steps"
     undoStack <- fmap (map $ id &&& Txt.unwords . map (progStepRsr Arr.!))
-                   <$> lookupSessionJSON "undo-stack"
+                   <$> lookupSessionFlat "undo-stack"
     mapM undo undoStack
     redirect HomeR
  where undo [] = undefined -- return ()
        undo ((_,step):steps) = do
           takenStep <- revertProgress step
           case takenStep of
-             True -> setSessionJSON "undo-stack" $ fst<$>steps
+             True -> setSessionFlat "undo-stack" $ fst<$>steps
              False -> undo steps
 
 getResetR :: Handler Html
@@ -712,14 +713,14 @@ lookupProgress path = do
        <- Map.fromList . maybe [] ((`zip`[0..]) . decompressPrPathSteps)
                 <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
    let decode bs
         | Just decoded <- JSON.decode (BSL.fromStrict bs) = decoded
         | otherwise = error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
    case traverse (`Map.lookup`progStepRsr) $ Txt.words path of
      Just path' -> fmap (decode . BC8.pack . (progKeyRsr Arr.!)) . (>>= Map.lookup path')
-                     <$> lookupSessionJSON "progress"
+                     <$> lookupSessionFlat "progress"
      Nothing -> return Nothing
 
 
@@ -729,27 +730,27 @@ setProgress path prog = do
        <- Arr.fromList . maybe [] decompressPrPathSteps
                  <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
    progs :: Map.Map [Text] String
        <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
                           . fmap (progKeyRsr Arr.!) )
-             <$> lookupSessionJSON "progress"
+             <$> lookupSessionFlat "progress"
    let progs' = Map.insert (Txt.words path)
                            (BC8.unpack . BSL.toStrict $ JSON.encode prog) progs
        (ListT (WriterT keyCompressed), progStepRsr')
                   = rmRedundancy . ListT . WriterT $ Map.toList progs'
        (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
+   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
    setSessionBS "progress-steps" . compressPrPathSteps
                     $ Arr.toList progStepRsr'
-   setSessionJSON "progress" $ compressedProgs
+   setSessionFlat "progress" $ compressedProgs
 
    let Just (compressedPath :: [Int])
            = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0..]))
                       (Txt.words path)
                   
    undoStack <- (JSON.decode . BSL.fromStrict =<<) <$> lookupSessionBS "undo-stack"
-   setSessionJSON "undo-stack" $ case undoStack of
+   setSessionFlat "undo-stack" $ case undoStack of
      Nothing -> [compressedPath]
      Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps
 
@@ -759,27 +760,35 @@ revertProgress path = do
        <- Arr.fromList . maybe [] decompressPrPathSteps
                  <$> lookupSessionBS "progress-steps"
    progKeyRsr :: Arr.Vector String
-       <- Arr.fromList . maybe [] id <$> lookupSessionJSON "progress-keys"
+       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
    progs :: Map.Map [Text] String
        <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
                           . fmap (progKeyRsr Arr.!))
-             <$> lookupSessionJSON "progress"
+             <$> lookupSessionFlat "progress"
    let progs' = Map.delete (Txt.words path) progs
        (ListT (WriterT keyCompressed), progStepRsr')
                   = rmRedundancy . ListT . WriterT $ Map.toList progs'
        (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionJSON "progress-keys" $ Arr.toList progKeyRsr'
+   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
    setSessionBS "progress-steps" . compressPrPathSteps
                     $ Arr.toList progStepRsr'
-   setSessionJSON "progress" $ compressedProgs
+   setSessionFlat "progress" $ compressedProgs
                   
    return $ Txt.words path`Map.member`progs
 
-lookupSessionJSON :: (MonadHandler m, JSON.FromJSON a) => Text -> m (Maybe a)
-lookupSessionJSON = fmap (JSON.decode . BSL.fromStrict =<<) . lookupSessionBS
+lookupSessionFlat :: (MonadHandler m, Flat a) => Text -> m (Maybe a)
+lookupSessionFlat = fmap (either (const Nothing) Just
+                            . unflat . BSL.fromStrict =<<) . lookupSessionBS
 
-setSessionJSON :: (MonadHandler m, JSON.ToJSON a) => Text -> a -> m ()
-setSessionJSON k = setSessionBS k . BSL.toStrict . JSON.encode
+setSessionFlat :: (MonadHandler m, Flat a) => Text -> a -> m ()
+setSessionFlat k = setSessionBS k . flat
+
+modifySessionFlat :: (MonadHandler m, Flat a, Flat a)
+                      => Text -> (Maybe a->a) -> m ()
+modifySessionFlat k f = do
+   a <- lookupSessionFlat k
+   setSessionFlat k $ f a
+     
 
 yeamer :: Presentation -> IO ()
 yeamer presentation = do
