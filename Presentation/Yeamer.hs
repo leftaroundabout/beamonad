@@ -135,9 +135,10 @@ data HTMChunkK = HTMDiv {_hchunkCSSClass::Text} | HTMSpan {_hchunkCSSClass::Text
           deriving (Generic, Eq, Ord)
 instance JSON.FromJSON HTMChunkK
 instance JSON.ToJSON HTMChunkK
+instance Flat HTMChunkK
 makeLenses ''HTMChunkK
 
-type Sessionable r = (ToJSON r, FromJSON r)
+type Sessionable = Flat
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
@@ -707,36 +708,36 @@ getResetR = do
     clearSession
     redirect HomeR
 
-lookupProgress :: (MonadHandler m, JSON.FromJSON x) => PrPath -> m (Maybe x)
+lookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
 lookupProgress path = do
    progStepRsr :: Map Text Int
        <- Map.fromList . maybe [] ((`zip`[0..]) . decompressPrPathSteps)
                 <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector String
+   progKeyRsr :: Arr.Vector ByteString
        <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
    let decode bs
-        | Just decoded <- JSON.decode (BSL.fromStrict bs) = decoded
+        | Right decoded <- unflat bs  = decoded
         | otherwise = error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
    case traverse (`Map.lookup`progStepRsr) $ Txt.words path of
-     Just path' -> fmap (decode . BC8.pack . (progKeyRsr Arr.!)) . (>>= Map.lookup path')
+     Just path' -> fmap (decode . (progKeyRsr Arr.!)) . (>>= Map.lookup path')
                      <$> lookupSessionFlat "progress"
      Nothing -> return Nothing
 
 
-setProgress :: (MonadHandler m, JSON.ToJSON x) => PrPath -> x -> m ()
+setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> m ()
 setProgress path prog = do
    progStepRsr :: Arr.Vector Text
        <- Arr.fromList . maybe [] decompressPrPathSteps
                  <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector String
+   progKeyRsr :: Arr.Vector ByteString
        <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] String
+   progs :: Map.Map [Text] ByteString
        <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
                           . fmap (progKeyRsr Arr.!) )
              <$> lookupSessionFlat "progress"
    let progs' = Map.insert (Txt.words path)
-                           (BC8.unpack . BSL.toStrict $ JSON.encode prog) progs
+                           (flat prog) progs
        (ListT (WriterT keyCompressed), progStepRsr')
                   = rmRedundancy . ListT . WriterT $ Map.toList progs'
        (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
@@ -749,7 +750,7 @@ setProgress path prog = do
            = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0..]))
                       (Txt.words path)
                   
-   undoStack <- (JSON.decode . BSL.fromStrict =<<) <$> lookupSessionBS "undo-stack"
+   undoStack <- lookupSessionFlat "undo-stack"
    setSessionFlat "undo-stack" $ case undoStack of
      Nothing -> [compressedPath]
      Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps

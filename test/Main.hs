@@ -14,6 +14,9 @@ import Data.String (fromString)
 import Data.Function (fix)
 
 import Data.Time.Clock
+import Data.Time.Clock.POSIX
+
+import Data.Flat (Flat(..))
 
 main :: IO ()
 main = yeamer . styling ([lucius|
@@ -112,3 +115,8 @@ main = yeamer . styling ([lucius|
 
 filling :: Int -> String -> Presentation
 filling n = fromString . concat . replicate n . (++" ")
+
+instance Flat UTCTime where
+  decode = fmap (posixSecondsToUTCTime . realToFrac . (id::Double->Double)) decode
+  encode = encode . (id::Double->Double) . realToFrac . utcTimeToPOSIXSeconds
+  size = size . (id::Double->Double) . realToFrac . utcTimeToPOSIXSeconds

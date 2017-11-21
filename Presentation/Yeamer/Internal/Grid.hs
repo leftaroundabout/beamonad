@@ -24,6 +24,7 @@ import Data.Semigroup.Numbered
 import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Flat (Flat)
 
 import Data.Ratio ((%))
 
@@ -41,6 +42,7 @@ data Gridded a = GridRegion a
   deriving (Generic, Functor, Eq, Show, Foldable, Traversable)
 instance FromJSON a => FromJSON (Gridded a)
 instance ToJSON a => ToJSON (Gridded a)
+instance Flat a => Flat (Gridded a)
 
 instance Applicative Gridded where
   pure = GridRegion
