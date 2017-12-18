@@ -10,6 +10,8 @@
 -- Convenience module, re-exporting the necessary LaTeX builders for writing maths
 -- in a Yeamer presentation.
 
+{-# LANGUAGE CPP #-}
+
 module Presentation.Yeamer.Maths
                 ( module Presentation.Yeamer
                 , module Math.LaTeX.Prelude
@@ -18,5 +20,9 @@ module Presentation.Yeamer.Maths
 
 
 import Presentation.Yeamer
-import Math.LaTeX.Prelude hiding (maths)
+import Math.LaTeX.Prelude hiding ( maths
+#if MIN_VERSION_TeX_my_math(0,201,2)
+                                 , ($<>)
+#endif
+                                 )
 import Math.LaTeX.StringLiterals ()
