@@ -60,7 +60,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
-import qualified Data.Binary as Bin
 
 import Text.Cassius (Css)
 import Text.Julius (rawJS)
