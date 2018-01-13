@@ -32,7 +32,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Maths
                            , ($<>), maths
                            -- ** Images
-                           , imageFromFile
+                           , imageFromFile, imageFromFileSupplier
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
@@ -97,7 +97,7 @@ import Data.Tuple (swap)
 import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtension
                        , (<.>), (</>) )
 import System.Directory ( doesPathExist, makeAbsolute
-                        , createDirectoryIfMissing
+                        , createDirectoryIfMissing, renameFile
 #if MIN_VERSION_directory(1,3,1)
                         , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget
 #endif
@@ -105,6 +105,7 @@ import System.Directory ( doesPathExist, makeAbsolute
 #if !MIN_VERSION_directory(1,3,1)
 import System.Posix.Files (createSymbolicLink, readSymbolicLink)
 #endif
+import System.IO.Temp
 
 import GHC.Generics
 import Lens.Micro
@@ -543,10 +544,18 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
                         $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
 
+       
+imageFromFileSupplier :: String               -- ^ File extension
+                      -> (FilePath -> IO ())  -- ^ File-writer function
+                      -> IPresentation IO ()
+imageFromFileSupplier ext = includeImageFile ext . Left
 
 imageFromFile :: FilePath -> IPresentation IO ()
-imageFromFile file = do
-   let prepareServing hashLen completeHash = do
+imageFromFile file = includeImageFile (takeExtension file) $ Right file
+
+includeImageFile :: FilePath -> Either (FilePath -> IO ()) FilePath -> IPresentation IO ()
+includeImageFile fileExt fileSupp = do
+   let prepareServing file hashLen completeHash = do
          let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
          absOrig <- makeAbsolute file
@@ -555,7 +564,7 @@ imageFromFile file = do
                createFileLink absOrig linkPath
                return codedName
              disambiguate
-              | hashLen < length linkPath  = prepareServing (hashLen+1) completeHash
+              | hashLen < length linkPath  = prepareServing file (hashLen+1) completeHash
          if isOccupied
             then do
               isSymlk <- pathIsSymbolicLink linkPath
@@ -567,11 +576,21 @@ imageFromFile file = do
                    else return codedName
                 else disambiguate
             else makeThisLink
-   imgCode <- serverSide . prepareServing 1 . base64md5 . BSL.fromStrict . BC8.pack
+   imgCode <- case fileSupp of
+       Right file
+          -> serverSide . prepareServing file 1 . base64md5 . BSL.fromStrict . BC8.pack
                  $ show file
-   let servableFile = "pseudostatic"</>imgCode<.>takeExtension file
+       Left supplier
+          -> serverSide $ do
+               tmpFile <- emptyTempFile pStatDir fileExt
+               supplier tmpFile
+               longHash <- base64md5 <$> BSL.readFile tmpFile
+               let file = pStatDir</>longHash<.>fileExt
+               renameFile tmpFile file
+               prepareServing file 1 (base64md5 . BSL.fromStrict $ BC8.pack file)
+               
+   let servableFile = "pseudostatic"</>imgCode<.>fileExt
     in StaticContent $ [hamlet| <img src=#{servableFile}> |]()
-       
 
 postChPosR :: Handler ()
 postChPosR = do

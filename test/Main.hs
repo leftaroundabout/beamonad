@@ -18,6 +18,11 @@ import Data.Time.Clock.POSIX
 
 import Data.Flat (Flat(..))
 
+import qualified Diagrams.Prelude as Dia
+import qualified Diagrams.Backend.Cairo as Dia
+
+import Data.Function
+
 main :: IO ()
 main = yeamer . styling ([lucius|
                   body {
@@ -66,6 +71,11 @@ main = yeamer . styling ([lucius|
 
    "Image files"
     ====== do
+    imageFromDiagram (
+        Dia.circle 1 & Dia.lc Dia.red
+      )
+     ──
+     "Plain circle"
     imageFromFile "/usr/share/icons/HighContrast/256x256/apps/firefox.png"
      ──
      "(Firefox logo)"
@@ -111,7 +121,10 @@ main = yeamer . styling ([lucius|
    return ()
 
 
-
+imageFromDiagram :: Dia.Diagram Dia.Cairo -> Presentation
+imageFromDiagram dia = imageFromFileSupplier "png"
+           $ \tgtFile -> Dia.renderCairo tgtFile
+                           (Dia.mkSizeSpec $ Just 640 Dia.^& Just 480) dia
 
 filling :: Int -> String -> Presentation
 filling n = fromString . concat . replicate n . (++" ")

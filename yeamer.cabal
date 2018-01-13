@@ -49,6 +49,7 @@ library
                        , aeson 
                        , zlib
                        , filepath
+                       , temporary
                        , template-haskell
                        , vector
   if os(windows)
@@ -71,6 +72,7 @@ executable test-presentation
                        , semigroups
                        , numbered-semigroups
                        , time
+                       , diagrams-lib, diagrams-cairo
                        , flat
   hs-source-dirs:      test
   ghc-options:         -rtsopts "-with-rtsopts=-M2G"
