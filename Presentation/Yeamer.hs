@@ -99,7 +99,7 @@ import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtensio
 import System.Directory ( doesPathExist, makeAbsolute
                         , createDirectoryIfMissing
 #if MIN_VERSION_directory(1,3,1)
-                        , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget )
+                        , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget
 #endif
                         )
 #if !MIN_VERSION_directory(1,3,1)
