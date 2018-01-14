@@ -778,9 +778,9 @@ revertProgress path = do
    progStepRsr :: Arr.Vector Text
        <- Arr.fromList . maybe [] decompressPrPathSteps
                  <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector String
+   progKeyRsr :: Arr.Vector ByteString
        <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] String
+   progs :: Map.Map [Text] ByteString
        <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
                           . fmap (progKeyRsr Arr.!))
              <$> lookupSessionFlat "progress"
