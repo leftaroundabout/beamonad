@@ -31,8 +31,8 @@ module Presentation.Yeamer ( Presentation
                            , staticContent, serverSide
                            -- ** Maths
                            , ($<>), maths
-                           -- ** Images
-                           , imageFromFile, imageFromFileSupplier
+                           -- ** Media content
+                           , imageFromFile, mediaFromFile, imageFromFileSupplier
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
@@ -545,16 +545,40 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
 
        
+-- | Display an image generated on-the-fly in the server. The image will be
+--   stored temporarily, in a content-indexed fashion.
 imageFromFileSupplier :: String               -- ^ File extension
                       -> (FilePath -> IO ())  -- ^ File-writer function
                       -> IPresentation IO ()
-imageFromFileSupplier ext = includeImageFile ext . Left
+imageFromFileSupplier ext = includeMediaFile SimpleVideo ext . Left
 
+-- | Display an image that lies on the server as any ordinary static file.
 imageFromFile :: FilePath -> IPresentation IO ()
-imageFromFile file = includeImageFile (takeExtension file) $ Right file
+imageFromFile file = includeMediaFile SimpleImage (takeExtension file) $ Right file
 
-includeImageFile :: FilePath -> Either (FilePath -> IO ()) FilePath -> IPresentation IO ()
-includeImageFile fileExt fileSupp = do
+-- | More general form of 'imageFromFile'. Takes a guess based on the file
+--   extension, as to whether the media is a standing image or a video. In the
+--   latter case, simple HTML5 controls are added.
+mediaFromFile :: FilePath -> IPresentation IO ()
+mediaFromFile file = includeMediaFile (guessMediaFileSetup fileExt) fileExt $ Right file
+ where fileExt = takeExtension file
+
+guessMediaFileSetup :: String -> MediaFileSetup
+guessMediaFileSetup fileExt
+  | fileExt`elem`knownImgFormats    = SimpleImage
+  | fileExt`elem`knownVideoFormats  = SimpleVideo
+  | otherwise  = error $ "Unknow media format ‘"++fileExt++"’. Use one of "
+                            ++ show (knownImgFormats++knownVideoFormats)
+ where knownImgFormats = ('.':)<$>words "png gif jpg jpeg"
+       knownVideoFormats = ('.':)<$>words "webm ogg mp4"
+
+data MediaFileSetup
+      = SimpleImage
+      | SimpleVideo
+
+includeMediaFile :: MediaFileSetup -> FilePath
+             -> Either (FilePath -> IO ()) FilePath -> IPresentation IO ()
+includeMediaFile mediaSetup fileExt fileSupp = do
    let prepareServing file hashLen completeHash = do
          let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
@@ -590,7 +614,9 @@ includeImageFile fileExt fileSupp = do
                prepareServing file 1 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
    let servableFile = "pseudostatic"</>imgCode<.>fileExt
-    in StaticContent $ [hamlet| <img src=#{servableFile}> |]()
+    in StaticContent $ case mediaSetup of
+         SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
+         SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
 
 postChPosR :: Handler ()
 postChPosR = do
