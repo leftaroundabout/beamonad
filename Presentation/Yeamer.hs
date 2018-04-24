@@ -550,7 +550,7 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
 imageFromFileSupplier :: String               -- ^ File extension
                       -> (FilePath -> IO ())  -- ^ File-writer function
                       -> IPresentation IO ()
-imageFromFileSupplier ext = includeMediaFile SimpleVideo ext . Left
+imageFromFileSupplier ext = includeMediaFile SimpleImage ext . Left
 
 -- | Display an image that lies on the server as any ordinary static file.
 imageFromFile :: FilePath -> IPresentation IO ()
