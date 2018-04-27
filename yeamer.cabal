@@ -22,6 +22,7 @@ library
                        Presentation.Yeamer.Internal.Grid
   other-modules:       Control.Monad.Trans.Writer.JSONable
                        Presentation.Yeamer.Internal.PrPathStepCompression
+                       Presentation.Yeamer.Internal.Progress
                        Data.Traversable.Redundancy
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.11
@@ -45,6 +46,7 @@ library
                        , these >=0.7 && <0.8
                        , text 
                        , bytestring 
+                       , base64-bytestring 
                        , flat >0.3.1 && <0.4
                        , aeson 
                        , zlib
