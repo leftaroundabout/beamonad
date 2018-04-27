@@ -23,6 +23,7 @@
 {-# LANGUAGE UnicodeSyntax          #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
@@ -171,6 +172,7 @@ pStatDir = ".pseudo-static-content"
 
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
+/p/#PresProgress ExactPositionR GET
 /changeposition ChPosR POST
 /r StepBackR GET
 /reset ResetR GET
@@ -246,7 +248,11 @@ isInline (Pure _) = True
 
 
 getHomeR :: Handler Html
-getHomeR = do
+getHomeR = getAllProgress >>= redirect . ExactPositionR
+   
+
+getExactPositionR :: PresProgress -> Handler Html
+getExactPositionR _ = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
