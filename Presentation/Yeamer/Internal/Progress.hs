@@ -10,6 +10,8 @@
 module Presentation.Yeamer.Internal.Progress where
 
 
+import Presentation.Yeamer.Internal.PrPathStepCompression
+
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Vector as Arr
@@ -45,16 +47,18 @@ instance PathPiece PresProgress where
               <<<                  URLBase64.encode
               <<<                  flat . disassemblePresProgress
 
-assemblePresProgress :: ([Text], [ByteString], Map [Int] Int) -> PresProgress
-assemblePresProgress (pSR_l, pKR_l, prog_c)
+assemblePresProgress :: (ByteString, [ByteString], Map [Int] Int) -> PresProgress
+assemblePresProgress (pSR_l_c, pKR_l, prog_c)
           = PresProgress . Map.mapKeys (map (progStepRsr Arr.!))
                           $ fmap (progKeyRsr Arr.!) prog_c
- where progStepRsr = Arr.fromList pSR_l
+ where progStepRsr = Arr.fromList $ decompressPrPathSteps pSR_l_c
        progKeyRsr = Arr.fromList pKR_l
 
-disassemblePresProgress :: PresProgress -> ([Text], [ByteString], Map [Int] Int)
+disassemblePresProgress :: PresProgress -> (ByteString, [ByteString], Map [Int] Int)
 disassemblePresProgress (PresProgress progs)
-         = (Arr.toList progStepRsr, Arr.toList progKeyRsr, compressedProgs)
+         = ( compressPrPathSteps $ Arr.toList progStepRsr
+           , Arr.toList progKeyRsr
+           , compressedProgs )
  where (ListT (WriterT keyCompressed), progStepRsr)
                   = rmRedundancy . ListT . WriterT $ Map.toList progs
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
