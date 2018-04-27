@@ -55,6 +55,7 @@ import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
 import qualified Text.Blaze.Html.Renderer.Text as HTMText
+import Presentation.Yeamer.Internal.Progress
 import Presentation.Yeamer.Internal.PrPathStepCompression
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -752,46 +753,46 @@ getResetR = do
     clearSession
     redirect HomeR
 
-lookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
+
+getAllProgress :: MonadHandler m => m PresProgress
+getAllProgress = curry (curry assemblePresProgress)
+               <$> (maybe noProgressSteps id <$> lookupSessionBS "progress-steps")
+               <*> (maybe [] id <$> lookupSessionFlat "progress-keys")
+               <*> (maybe Map.empty id <$> lookupSessionFlat "progress")
+
+setAllProgress :: MonadHandler m => PresProgress -> m ()
+setAllProgress prog = do
+   setSessionBS "progress-steps" compressedSteps
+   setSessionFlat "progress-keys" compressedKeys
+   setSessionFlat "progress" compressedProgs
+ where ((compressedSteps, compressedKeys), compressedProgs)
+           = disassemblePresProgress prog
+
+lookupProgress :: ∀ x m . (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
 lookupProgress path = do
-   progStepRsr :: Map Text Int
-       <- Map.fromList . maybe [] ((`zip`[0..]) . decompressPrPathSteps)
-                <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   let decode bs
-        | Right decoded <- unflat bs  = decoded
-        | otherwise = error $
+   PresProgress progs <- getAllProgress
+   case Map.lookup (Txt.words path) progs of
+     Just bs
+        | Right decoded <- unflat bs  -> return $ Just decoded
+        | otherwise                   -> error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
-   case traverse (`Map.lookup`progStepRsr) $ Txt.words path of
-     Just path' -> fmap (decode . (progKeyRsr Arr.!)) . (>>= Map.lookup path')
-                     <$> lookupSessionFlat "progress"
      Nothing -> return Nothing
 
 
 setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> m ()
 setProgress path prog = do
-   progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-                 <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] ByteString
-       <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
-                          . fmap (progKeyRsr Arr.!) )
-             <$> lookupSessionFlat "progress"
-   let progs' = Map.insert (Txt.words path)
+   PresProgress progs <- getAllProgress
+   let ((compressedSteps, compressedKeys), compressedProgs)
+           = disassemblePresProgress . PresProgress
+              $ Map.insert (Txt.words path)
                            (flat prog) progs
-       (ListT (WriterT keyCompressed), progStepRsr')
-                  = rmRedundancy . ListT . WriterT $ Map.toList progs'
-       (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionBS "progress-steps" . compressPrPathSteps
-                    $ Arr.toList progStepRsr'
-   setSessionFlat "progress" $ compressedProgs
+       progStepRsr' = decompressPrPathSteps compressedSteps
+   setSessionBS "progress-steps" compressedSteps
+   setSessionFlat "progress-keys" compressedKeys
+   setSessionFlat "progress" compressedProgs
 
    let Just (compressedPath :: [Int])
-           = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0..]))
+           = traverse (`Map.lookup` Map.fromList (zip progStepRsr' [0..]))
                       (Txt.words path)
                   
    undoStack <- lookupSessionFlat "undo-stack"
@@ -801,23 +802,8 @@ setProgress path prog = do
 
 revertProgress :: MonadHandler m => PrPath -> m Bool
 revertProgress path = do
-   progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-                 <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] ByteString
-       <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
-                          . fmap (progKeyRsr Arr.!))
-             <$> lookupSessionFlat "progress"
-   let progs' = Map.delete (Txt.words path) progs
-       (ListT (WriterT keyCompressed), progStepRsr')
-                  = rmRedundancy . ListT . WriterT $ Map.toList progs'
-       (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionBS "progress-steps" . compressPrPathSteps
-                    $ Arr.toList progStepRsr'
-   setSessionFlat "progress" $ compressedProgs
+   PresProgress progs <- getAllProgress
+   setAllProgress . PresProgress $ Map.delete (Txt.words path) progs
                   
    return $ Txt.words path`Map.member`progs
 

@@ -47,17 +47,17 @@ instance PathPiece PresProgress where
               <<<                  URLBase64.encode
               <<<                  flat . disassemblePresProgress
 
-assemblePresProgress :: (ByteString, [ByteString], Map [Int] Int) -> PresProgress
-assemblePresProgress (pSR_l_c, pKR_l, prog_c)
+assemblePresProgress :: ((ByteString, [ByteString]), Map [Int] Int) -> PresProgress
+assemblePresProgress ((pSR_l_c, pKR_l), prog_c)
           = PresProgress . Map.mapKeys (map (progStepRsr Arr.!))
                           $ fmap (progKeyRsr Arr.!) prog_c
  where progStepRsr = Arr.fromList $ decompressPrPathSteps pSR_l_c
        progKeyRsr = Arr.fromList pKR_l
 
-disassemblePresProgress :: PresProgress -> (ByteString, [ByteString], Map [Int] Int)
+disassemblePresProgress :: PresProgress -> ((ByteString, [ByteString]), Map [Int] Int)
 disassemblePresProgress (PresProgress progs)
-         = ( compressPrPathSteps $ Arr.toList progStepRsr
-           , Arr.toList progKeyRsr
+         = ( ( compressPrPathSteps $ Arr.toList progStepRsr
+             , Arr.toList progKeyRsr )
            , compressedProgs )
  where (ListT (WriterT keyCompressed), progStepRsr)
                   = rmRedundancy . ListT . WriterT $ Map.toList progs
