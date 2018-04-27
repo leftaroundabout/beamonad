@@ -7,6 +7,7 @@
 -- Stability   : experimental
 -- Portability : portable
 -- 
+{-# LANGUAGE DeriveGeneric              #-}
 module Presentation.Yeamer.Internal.Progress where
 
 
@@ -21,7 +22,8 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as Txt
 import qualified Data.ByteString.Base64.URL as URLBase64
 
-import Data.Flat (flat, unflat)
+import Data.Flat (Flat, flat, unflat)
+import qualified Data.Aeson as JSON
 
 import Yesod (PathPiece(..))
 
@@ -34,9 +36,13 @@ import Lens.Micro.Extras (preview)
 
 import Data.Traversable.Redundancy (rmRedundancy)
 
+import GHC.Generics
+
+
+type PrPath = Text
 
 newtype PresProgress = PresProgress
-    { getPresentationProgress :: Map [Text] ByteString }
+    { getPresentationProgress :: Map [PrPath] ByteString }
     deriving (Eq, Show, Read)
 
 instance PathPiece PresProgress where
@@ -62,3 +68,19 @@ disassemblePresProgress (PresProgress progs)
  where (ListT (WriterT keyCompressed), progStepRsr)
                   = rmRedundancy . ListT . WriterT $ Map.toList progs
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
+
+
+data PositionChange = PositionChange
+    { posChangeLevel :: PrPath
+    , posChangeIsRevert :: Bool
+    } deriving (Generic, Eq, Show, Read)
+instance JSON.FromJSON PositionChange
+
+instance PathPiece PositionChange where
+  fromPathPiece = Txt.encodeUtf8
+                 >>> preview _Right . URLBase64.decode
+                 >=> preview _Right . fmap (uncurry PositionChange) . unflat
+  toPathPiece (PositionChange lvl isRev)
+                = Txt.decodeUtf8
+                 <<< URLBase64.encode
+                   $ flat (lvl, isRev)

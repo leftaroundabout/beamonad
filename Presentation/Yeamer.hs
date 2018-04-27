@@ -120,13 +120,6 @@ getSymbolicLinkTarget = readSymbolicLink
 pathIsSymbolicLink _ = pure True
 #endif
 
-type PrPath = Text
-data PositionChange = PositionChange
-    { posChangeLevel :: PrPath
-    , posChangeIsRevert :: Bool
-    } deriving (Generic)
-instance JSON.FromJSON PositionChange
-
 data Container t where
   WithHeading :: Html -> Container Identity
   ManualCSSClasses :: Container (WriterT HTMChunkK [])
