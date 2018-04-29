@@ -815,9 +815,6 @@ setProgress path prog = do
        progStepRsr' = decompressPrPathSteps compressedSteps
 
    put $ PresProgress progs'
-   setSessionBS "progress-steps" compressedSteps
-   setSessionFlat "progress-keys" compressedKeys
-   setSessionFlat "progress" compressedProgs
 
    let Just (compressedPath :: [Int])
            = traverse (`Map.lookup` Map.fromList (zip progStepRsr' [0..]))
@@ -833,7 +830,6 @@ revertProgress path = do
    PresProgress progs <- get
    let progs' = Map.delete (Txt.words path) progs
    put $ PresProgress progs'
-   setAllProgress $ PresProgress progs
                   
    return $ Txt.words path`Map.member`progs
 
