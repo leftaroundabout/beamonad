@@ -40,7 +40,7 @@ module Presentation.Yeamer ( Presentation
                            , divClass, spanClass, (#%), styling
                            ) where
 
-import Yesod
+import Yesod hiding (get)
 import Yesod.Form.Jquery
 
 import qualified Data.Text as Txt
@@ -305,8 +305,8 @@ getExactPositionR pPosition = do
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
                  Right x -> do
-                   setProgress progPath x
-                   chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
+                   pPosition' <- setProgress progPath x `execStateT` pPosition
+                   redirect $ ExactPositionR pPosition'
             Just x -> chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
        chooseSlide path choiceName pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
@@ -625,7 +625,8 @@ includeMediaFile mediaSetup fileExt fileSupp = do
 postChPosR :: Handler ()
 postChPosR = do
    oldPosition <- getAllProgress
-   evalStateT changePos_State oldPosition
+   newPosition <- execStateT changePos_State oldPosition
+   setAllProgress newPosition
 
 changePos_State :: StateT PresProgress Handler ()
 changePos_State = do
@@ -749,7 +750,9 @@ getStepBackR = do
             <$> lookupSessionBS "progress-steps"
     undoStack <- fmap (map $ id &&& Txt.unwords . map (progStepRsr Arr.!))
                    <$> lookupSessionFlat "undo-stack"
-    mapM undo undoStack
+    thisPosition <- getAllProgress
+    previousPosition <- mapM undo undoStack `execStateT` thisPosition
+    setAllProgress previousPosition
     redirect HomeR
  where undo [] = undefined -- return ()
        undo ((_,step):steps) = do
@@ -785,30 +788,33 @@ instance KnowsProgressState (WidgetT PresentationServer IO) where
   lookupProgress = handlerLookupProgress
 instance MonadHandler m
             => KnowsProgressState (StateT PresProgress m) where
-  lookupProgress = handlerLookupProgress
+  lookupProgress path = get >>= lift . runReaderT (lookupProgress path)
 instance MonadHandler m
             => KnowsProgressState (ReaderT PresProgress m) where
-  lookupProgress = handlerLookupProgress
-    
-handlerLookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
-handlerLookupProgress path = do
-   PresProgress progs <- getAllProgress
+  lookupProgress path = do
+   PresProgress progs <- ask
    case Map.lookup (Txt.words path) progs of
      Just bs
         | Right decoded <- unflat bs  -> return $ Just decoded
         | otherwise                   -> error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
      Nothing -> return Nothing
+ 
+handlerLookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
+handlerLookupProgress path = getAllProgress >>= runReaderT (lookupProgress path)
 
 
-setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> m ()
+setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> StateT PresProgress m ()
 setProgress path prog = do
-   PresProgress progs <- getAllProgress
-   let ((compressedSteps, compressedKeys), compressedProgs)
-           = disassemblePresProgress . PresProgress
-              $ Map.insert (Txt.words path)
+   PresProgress progs <- get
+   
+   let progs' = Map.insert (Txt.words path)
                            (flat prog) progs
+       ((compressedSteps, compressedKeys), compressedProgs)
+           = disassemblePresProgress $ PresProgress progs'
        progStepRsr' = decompressPrPathSteps compressedSteps
+
+   put $ PresProgress progs'
    setSessionBS "progress-steps" compressedSteps
    setSessionFlat "progress-keys" compressedKeys
    setSessionFlat "progress" compressedProgs
@@ -822,10 +828,12 @@ setProgress path prog = do
      Nothing -> [compressedPath]
      Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps
 
-revertProgress :: MonadHandler m => PrPath -> m Bool
+revertProgress :: MonadHandler m => PrPath -> StateT PresProgress m Bool
 revertProgress path = do
-   PresProgress progs <- getAllProgress
-   setAllProgress . PresProgress $ Map.delete (Txt.words path) progs
+   PresProgress progs <- get
+   let progs' = Map.delete (Txt.words path) progs
+   put $ PresProgress progs'
+   setAllProgress $ PresProgress progs
                   
    return $ Txt.words path`Map.member`progs
 
