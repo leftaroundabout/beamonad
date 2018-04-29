@@ -84,6 +84,7 @@ import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
 import Control.Monad.Trans.List
 import Control.Monad.Trans.State
+import Control.Monad.Trans.Reader
 import Data.These
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
@@ -246,18 +247,20 @@ getHomeR = getAllProgress >>= redirect . ExactPositionR
    
 
 getExactPositionR :: PresProgress -> Handler Html
-getExactPositionR _ = do
+getExactPositionR pPosition = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
-      slideChoice <- chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
+      slideChoice <- (`runReaderT`pPosition)
+            $ chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
       (`here`slideChoice) $ \slide -> do
           let contents = go 0 slide
           toWidget contents
       return ()
  where chooseSlide :: PrPath -> (Text->PrPath) -> Text -> Maybe PrPath -> Maybe PrPath
-                       -> IPresentation IO r -> WidgetT PresentationServer IO
-                                                (These Presentation r)
+                       -> IPresentation IO r
+                       -> ReaderT PresProgress
+                            (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
@@ -775,8 +778,20 @@ setAllProgress prog = do
  where ((compressedSteps, compressedKeys), compressedProgs)
            = disassemblePresProgress prog
 
-lookupProgress :: ∀ x m . (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
-lookupProgress path = do
+class (MonadHandler m) => KnowsProgressState m where
+  lookupProgress :: Flat x => PrPath -> m (Maybe x)
+
+instance KnowsProgressState (WidgetT PresentationServer IO) where
+  lookupProgress = handlerLookupProgress
+instance MonadHandler m
+            => KnowsProgressState (StateT PresProgress m) where
+  lookupProgress = handlerLookupProgress
+instance MonadHandler m
+            => KnowsProgressState (ReaderT PresProgress m) where
+  lookupProgress = handlerLookupProgress
+    
+handlerLookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
+handlerLookupProgress path = do
    PresProgress progs <- getAllProgress
    case Map.lookup (Txt.words path) progs of
      Just bs
