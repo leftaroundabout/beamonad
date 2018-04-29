@@ -83,6 +83,7 @@ import Data.Foldable (fold)
 import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
 import Control.Monad.Trans.List
+import Control.Monad.Trans.State
 import Data.These
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
@@ -620,11 +621,17 @@ includeMediaFile mediaSetup fileExt fileSupp = do
 
 postChPosR :: Handler ()
 postChPosR = do
+   oldPosition <- getAllProgress
+   evalStateT changePos_State oldPosition
+
+changePos_State :: StateT PresProgress Handler ()
+changePos_State = do
     PositionChange path isRevert <- requireJsonBody
     if isRevert
      then mempty <$> revertProgress path
      else do
-        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
+        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r
+                     -> StateT PresProgress Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
@@ -687,7 +694,8 @@ postChPosR = do
                         , "" ) [] p
             go' crumbs path p = go crumbs path p
             skipContentless :: (PrPath, Text->PrPath, Text)
-                                   -> IPresentation IO r -> Handler (Maybe r)
+                                   -> IPresentation IO r
+                                   -> StateT PresProgress Handler (Maybe r)
             skipContentless _ (Pure x) = return $ Just x
             skipContentless crumbs (Interactive p a) = do
                ll <- skipContentless crumbs p
