@@ -169,7 +169,6 @@ mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /p/#PresProgress ExactPositionR GET
 /changeposition/#PresProgress ChPosR POST
-/r StepBackR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -327,8 +326,6 @@ getExactPositionR pPosition = do
                          return;
                      }
                      e.stopPropagation();
-                     history.replaceState({}, "back", "@{StepBackR}");
-                     history.pushState({}, "current", "@{HomeR}");
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
@@ -340,7 +337,11 @@ getExactPositionR pPosition = do
                                  }),
                            dataType: "text",
                            success: function(newURL, textStatus, jqXHR) {
-                               window.location.replace(newURL);
+                              if (isRevert) {
+                                 window.location.replace(newURL);
+                              } else {
+                                 window.location.href = newURL;
+                              }
                            }
                         });
                      setTimeout(function() {}, 50);
@@ -746,24 +747,6 @@ defaultChoiceName pdiv = "n"<>pdiv<>"slide"
 disambiguateChoiceName :: (Text->PrPath) -> (Text->PrPath)
 disambiguateChoiceName = (.("n"<>))
 
-getStepBackR :: Handler Html
-getStepBackR = do
-    progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-            <$> lookupSessionBS "progress-steps"
-    undoStack <- fmap (map $ id &&& Txt.unwords . map (progStepRsr Arr.!))
-                   <$> lookupSessionFlat "undo-stack"
-    thisPosition <- getAllProgress
-    previousPosition <- mapM undo undoStack `execStateT` thisPosition
-    setAllProgress previousPosition
-    redirect HomeR
- where undo [] = undefined -- return ()
-       undo ((_,step):steps) = do
-          takenStep <- revertProgress step
-          case takenStep of
-             True -> setSessionFlat "undo-stack" $ fst<$>steps
-             False -> undo steps
-
 getResetR :: Handler Html
 getResetR = do
     clearSession
@@ -813,20 +796,8 @@ setProgress path prog = do
    
    let progs' = Map.insert (Txt.words path)
                            (flat prog) progs
-       ((compressedSteps, compressedKeys), compressedProgs)
-           = disassemblePresProgress $ PresProgress progs'
-       progStepRsr' = decompressPrPathSteps compressedSteps
 
    put $ PresProgress progs'
-
-   let Just (compressedPath :: [Int])
-           = traverse (`Map.lookup` Map.fromList (zip progStepRsr' [0..]))
-                      (Txt.words path)
-                  
-   undoStack <- lookupSessionFlat "undo-stack"
-   setSessionFlat "undo-stack" $ case undoStack of
-     Nothing -> [compressedPath]
-     Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps
 
 revertProgress :: MonadHandler m => PrPath -> StateT PresProgress m Bool
 revertProgress path = do
