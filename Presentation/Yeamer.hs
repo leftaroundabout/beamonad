@@ -338,9 +338,12 @@ getExactPositionR pPosition = do
                                    posChangeLevel: path,
                                    posChangeIsRevert: isRevert
                                  }),
-                           dataType: "text"
+                           dataType: "text",
+                           success: function(newURL, textStatus, jqXHR) {
+                               window.location.replace(newURL);
+                           }
                         });
-                     setTimeout(function() {location.reload();}, 50);
+                     setTimeout(function() {}, 50);
                  })
                |]
           (here %~ spanClass thisChoice)
@@ -622,11 +625,13 @@ includeMediaFile mediaSetup fileExt fileSupp = do
          SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
 
-postChPosR :: Handler ()
+
+postChPosR :: Handler Text
 postChPosR = do
    oldPosition <- getAllProgress
    newPosition <- execStateT changePos_State oldPosition
    setAllProgress newPosition
+   toTextUrl $ ExactPositionR newPosition
 
 changePos_State :: StateT PresProgress Handler ()
 changePos_State = do
