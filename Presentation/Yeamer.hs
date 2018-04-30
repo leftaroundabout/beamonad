@@ -168,7 +168,7 @@ pStatDir = ".pseudo-static-content"
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /p/#PresProgress ExactPositionR GET
-/changeposition ChPosR POST
+/changeposition/#PresProgress ChPosR POST
 /r StepBackR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
@@ -243,7 +243,7 @@ isInline (Pure _) = True
 
 
 getHomeR :: Handler Html
-getHomeR = getAllProgress >>= redirect . ExactPositionR
+getHomeR = redirect . ExactPositionR $ assemblePresProgress mempty
    
 
 getExactPositionR :: PresProgress -> Handler Html
@@ -332,7 +332,7 @@ getExactPositionR pPosition = do
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
-                           url: "@{ChPosR}",
+                           url: "@{ChPosR pPosition}",
                            type: "POST",
                            data: JSON.stringify({
                                    posChangeLevel: path,
@@ -626,11 +626,9 @@ includeMediaFile mediaSetup fileExt fileSupp = do
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
 
 
-postChPosR :: Handler Text
-postChPosR = do
-   oldPosition <- getAllProgress
+postChPosR :: PresProgress -> Handler Text
+postChPosR oldPosition = do
    newPosition <- execStateT changePos_State oldPosition
-   setAllProgress newPosition
    toTextUrl $ ExactPositionR newPosition
 
 changePos_State :: StateT PresProgress Handler ()
