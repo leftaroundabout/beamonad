@@ -617,7 +617,7 @@ includeMediaFile mediaSetup fileExt fileSupp = do
                renameFile tmpFile file
                prepareServing file 1 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
-   let servableFile = "pseudostatic"</>imgCode<.>fileExt
+   let servableFile = "/pseudostatic"</>imgCode<.>fileExt
     in StaticContent $ case mediaSetup of
          SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
