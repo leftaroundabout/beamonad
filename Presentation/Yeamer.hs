@@ -168,7 +168,7 @@ pStatDir = ".pseudo-static-content"
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /p/#PresProgress ExactPositionR GET
-/changeposition/#PresProgress ChPosR POST
+/changeposition/#PresProgress/#PositionChange ChPosR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -313,15 +313,15 @@ getExactPositionR pPosition = do
               newPath = (path<>" span."<>thisChoice)
               [revertPossible, progressPossible]
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
-              [previous,next] = maybe "null" (("'"<>).(<>"'")) <$> [bwd, fwd]
+              [previous,next] = maybe "null" id <$> [bwd, fwd]
           toWidget [julius|
                  $("#{rawJS newPath}").click(function(e){
                      if (e.ctrlKey && #{rawJS revertPossible}) {
                          isRevert = true;
-                         path = #{rawJS previous};
+                         pChanger = "@{ChPosR pPosition (PositionChange previous True)}";
                      } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
                          isRevert = false;
-                         path = #{rawJS next};
+                         pChanger = "@{ChPosR pPosition (PositionChange next False)}";
                      } else {
                          return;
                      }
@@ -329,12 +329,8 @@ getExactPositionR pPosition = do
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
-                           url: "@{ChPosR pPosition}",
-                           type: "POST",
-                           data: JSON.stringify({
-                                   posChangeLevel: path,
-                                   posChangeIsRevert: isRevert
-                                 }),
+                           url: pChanger,
+                           type: "GET",
                            dataType: "text",
                            success: function(newURL, textStatus, jqXHR) {
                               if (isRevert) {
@@ -627,14 +623,13 @@ includeMediaFile mediaSetup fileExt fileSupp = do
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
 
 
-postChPosR :: PresProgress -> Handler Text
-postChPosR oldPosition = do
-   newPosition <- execStateT changePos_State oldPosition
+getChPosR :: PresProgress -> PositionChange -> Handler Text
+getChPosR oldPosition posStep = do
+   newPosition <- execStateT (changePos_State posStep) oldPosition
    toTextUrl $ ExactPositionR newPosition
 
-changePos_State :: StateT PresProgress Handler ()
-changePos_State = do
-    PositionChange path isRevert <- requireJsonBody
+changePos_State :: PositionChange -> StateT PresProgress Handler ()
+changePos_State (PositionChange path isRevert) = do
     if isRevert
      then mempty <$> revertProgress path
      else do
