@@ -753,25 +753,9 @@ getResetR = do
     redirect HomeR
 
 
-getAllProgress :: MonadHandler m => m PresProgress
-getAllProgress = curry (curry assemblePresProgress)
-               <$> (maybe noProgressSteps id <$> lookupSessionBS "progress-steps")
-               <*> (maybe [] id <$> lookupSessionFlat "progress-keys")
-               <*> (maybe Map.empty id <$> lookupSessionFlat "progress")
-
-setAllProgress :: MonadHandler m => PresProgress -> m ()
-setAllProgress prog = do
-   setSessionBS "progress-steps" compressedSteps
-   setSessionFlat "progress-keys" compressedKeys
-   setSessionFlat "progress" compressedProgs
- where ((compressedSteps, compressedKeys), compressedProgs)
-           = disassemblePresProgress prog
-
 class (MonadHandler m) => KnowsProgressState m where
   lookupProgress :: Flat x => PrPath -> m (Maybe x)
 
-instance KnowsProgressState (WidgetT PresentationServer IO) where
-  lookupProgress = handlerLookupProgress
 instance MonadHandler m
             => KnowsProgressState (StateT PresProgress m) where
   lookupProgress path = get >>= lift . runReaderT (lookupProgress path)
@@ -786,9 +770,6 @@ instance MonadHandler m
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
      Nothing -> return Nothing
  
-handlerLookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
-handlerLookupProgress path = getAllProgress >>= runReaderT (lookupProgress path)
-
 
 setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> StateT PresProgress m ()
 setProgress path prog = do
@@ -807,18 +788,6 @@ revertProgress path = do
                   
    return $ Txt.words path`Map.member`progs
 
-lookupSessionFlat :: (MonadHandler m, Flat a) => Text -> m (Maybe a)
-lookupSessionFlat = fmap (either (const Nothing) Just
-                            . unflat . BSL.fromStrict =<<) . lookupSessionBS
-
-setSessionFlat :: (MonadHandler m, Flat a) => Text -> a -> m ()
-setSessionFlat k = setSessionBS k . flat
-
-modifySessionFlat :: (MonadHandler m, Flat a, Flat a)
-                      => Text -> (Maybe a->a) -> m ()
-modifySessionFlat k f = do
-   a <- lookupSessionFlat k
-   setSessionFlat k $ f a
      
 
 yeamer :: Presentation -> IO ()
