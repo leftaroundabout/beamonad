@@ -340,7 +340,7 @@ getExactPositionR pPosition = do
                               }
                            }
                         });
-                     setTimeout(function() {}, 50);
+                     setTimeout(function() {$("body").css("cursor","wait")}, 150);
                  })
                |]
           (here %~ spanClass thisChoice)
