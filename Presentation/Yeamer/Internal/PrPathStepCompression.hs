@@ -22,3 +22,6 @@ compressPrPathSteps
 decompressPrPathSteps :: BS.ByteString -> [Txt.Text]
 decompressPrPathSteps
     = Txt.lines . Txt.decodeUtf8 . BSL.toStrict . Zlib.decompress . BSL.fromStrict
+
+noProgressSteps :: BS.ByteString
+noProgressSteps = compressPrPathSteps []

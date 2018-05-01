@@ -23,6 +23,7 @@
 {-# LANGUAGE UnicodeSyntax          #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
@@ -39,7 +40,7 @@ module Presentation.Yeamer ( Presentation
                            , divClass, spanClass, (#%), styling
                            ) where
 
-import Yesod
+import Yesod hiding (get)
 import Yesod.Form.Jquery
 
 import qualified Data.Text as Txt
@@ -55,6 +56,7 @@ import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
 import qualified Text.Blaze.Html.Renderer.Text as HTMText
+import Presentation.Yeamer.Internal.Progress
 import Presentation.Yeamer.Internal.PrPathStepCompression
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -81,6 +83,8 @@ import Data.Foldable (fold)
 import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
 import Control.Monad.Trans.List
+import Control.Monad.Trans.State
+import Control.Monad.Trans.Reader
 import Data.These
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
@@ -117,13 +121,6 @@ createFileLink = createSymbolicLink
 getSymbolicLinkTarget = readSymbolicLink
 pathIsSymbolicLink _ = pure True
 #endif
-
-type PrPath = Text
-data PositionChange = PositionChange
-    { posChangeLevel :: PrPath
-    , posChangeIsRevert :: Bool
-    } deriving (Generic)
-instance JSON.FromJSON PositionChange
 
 data Container t where
   WithHeading :: Html -> Container Identity
@@ -170,8 +167,8 @@ pStatDir = ".pseudo-static-content"
 
 mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
-/changeposition ChPosR POST
-/r StepBackR GET
+/p/#PresProgress ExactPositionR GET
+/changeposition/#PresProgress/#PositionChange ChPosR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -245,18 +242,24 @@ isInline (Pure _) = True
 
 
 getHomeR :: Handler Html
-getHomeR = do
+getHomeR = redirect . ExactPositionR $ assemblePresProgress mempty
+   
+
+getExactPositionR :: PresProgress -> Handler Html
+getExactPositionR pPosition = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
-      slideChoice <- chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
+      slideChoice <- (`runReaderT`pPosition)
+            $ chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
       (`here`slideChoice) $ \slide -> do
           let contents = go 0 slide
           toWidget contents
       return ()
  where chooseSlide :: PrPath -> (Text->PrPath) -> Text -> Maybe PrPath -> Maybe PrPath
-                       -> IPresentation IO r -> WidgetT PresentationServer IO
-                                                (These Presentation r)
+                       -> IPresentation IO r
+                       -> ReaderT PresProgress
+                            (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
@@ -301,8 +304,8 @@ getHomeR = do
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
                  Right x -> do
-                   setProgress progPath x
-                   chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
+                   pPosition' <- setProgress progPath x `execStateT` pPosition
+                   redirect $ ExactPositionR pPosition'
             Just x -> chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
        chooseSlide path choiceName pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
@@ -310,33 +313,34 @@ getHomeR = do
               newPath = (path<>" span."<>thisChoice)
               [revertPossible, progressPossible]
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
-              [previous,next] = maybe "null" (("'"<>).(<>"'")) <$> [bwd, fwd]
+              [previous,next] = maybe "null" id <$> [bwd, fwd]
           toWidget [julius|
                  $("#{rawJS newPath}").click(function(e){
                      if (e.ctrlKey && #{rawJS revertPossible}) {
                          isRevert = true;
-                         path = #{rawJS previous};
+                         pChanger = "@{ChPosR pPosition (PositionChange previous True)}";
                      } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
                          isRevert = false;
-                         path = #{rawJS next};
+                         pChanger = "@{ChPosR pPosition (PositionChange next False)}";
                      } else {
                          return;
                      }
                      e.stopPropagation();
-                     history.replaceState({}, "back", "@{StepBackR}");
-                     history.pushState({}, "current", "@{HomeR}");
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
-                           url: "@{ChPosR}",
-                           type: "POST",
-                           data: JSON.stringify({
-                                   posChangeLevel: path,
-                                   posChangeIsRevert: isRevert
-                                 }),
-                           dataType: "text"
+                           url: pChanger,
+                           type: "GET",
+                           dataType: "text",
+                           success: function(newURL, textStatus, jqXHR) {
+                              if (isRevert) {
+                                 window.location.replace(newURL);
+                              } else {
+                                 window.location.href = newURL;
+                              }
+                           }
                         });
-                     setTimeout(function() {location.reload();}, 50);
+                     setTimeout(function() {$("body").css("cursor","wait")}, 150);
                  })
                |]
           (here %~ spanClass thisChoice)
@@ -613,18 +617,24 @@ includeMediaFile mediaSetup fileExt fileSupp = do
                renameFile tmpFile file
                prepareServing file 1 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
-   let servableFile = "pseudostatic"</>imgCode<.>fileExt
+   let servableFile = "/pseudostatic"</>imgCode<.>fileExt
     in StaticContent $ case mediaSetup of
          SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
 
-postChPosR :: Handler ()
-postChPosR = do
-    PositionChange path isRevert <- requireJsonBody
+
+getChPosR :: PresProgress -> PositionChange -> Handler Text
+getChPosR oldPosition posStep = do
+   newPosition <- execStateT (changePos_State posStep) oldPosition
+   toTextUrl $ ExactPositionR newPosition
+
+changePos_State :: PositionChange -> StateT PresProgress Handler ()
+changePos_State (PositionChange path isRevert) = do
     if isRevert
      then mempty <$> revertProgress path
      else do
-        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r -> Handler (Maybe r)
+        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r
+                     -> StateT PresProgress Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
@@ -687,7 +697,8 @@ postChPosR = do
                         , "" ) [] p
             go' crumbs path p = go crumbs path p
             skipContentless :: (PrPath, Text->PrPath, Text)
-                                   -> IPresentation IO r -> Handler (Maybe r)
+                                   -> IPresentation IO r
+                                   -> StateT PresProgress Handler (Maybe r)
             skipContentless _ (Pure x) = return $ Just x
             skipContentless crumbs (Interactive p a) = do
                ll <- skipContentless crumbs p
@@ -731,108 +742,47 @@ defaultChoiceName pdiv = "n"<>pdiv<>"slide"
 disambiguateChoiceName :: (Text->PrPath) -> (Text->PrPath)
 disambiguateChoiceName = (.("n"<>))
 
-getStepBackR :: Handler Html
-getStepBackR = do
-    progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-            <$> lookupSessionBS "progress-steps"
-    undoStack <- fmap (map $ id &&& Txt.unwords . map (progStepRsr Arr.!))
-                   <$> lookupSessionFlat "undo-stack"
-    mapM undo undoStack
-    redirect HomeR
- where undo [] = undefined -- return ()
-       undo ((_,step):steps) = do
-          takenStep <- revertProgress step
-          case takenStep of
-             True -> setSessionFlat "undo-stack" $ fst<$>steps
-             False -> undo steps
-
 getResetR :: Handler Html
 getResetR = do
     clearSession
     redirect HomeR
 
-lookupProgress :: (MonadHandler m, Flat x) => PrPath -> m (Maybe x)
-lookupProgress path = do
-   progStepRsr :: Map Text Int
-       <- Map.fromList . maybe [] ((`zip`[0..]) . decompressPrPathSteps)
-                <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   let decode bs
-        | Right decoded <- unflat bs  = decoded
-        | otherwise = error $
+
+class (MonadHandler m) => KnowsProgressState m where
+  lookupProgress :: Flat x => PrPath -> m (Maybe x)
+
+instance MonadHandler m
+            => KnowsProgressState (StateT PresProgress m) where
+  lookupProgress path = get >>= lift . runReaderT (lookupProgress path)
+instance MonadHandler m
+            => KnowsProgressState (ReaderT PresProgress m) where
+  lookupProgress path = do
+   PresProgress progs <- ask
+   case Map.lookup (Txt.words path) progs of
+     Just bs
+        | Right decoded <- unflat bs  -> return $ Just decoded
+        | otherwise                   -> error $
             "Internal error in `lookupProgress`: value "++show bs++" cannot be decoded."
-   case traverse (`Map.lookup`progStepRsr) $ Txt.words path of
-     Just path' -> fmap (decode . (progKeyRsr Arr.!)) . (>>= Map.lookup path')
-                     <$> lookupSessionFlat "progress"
      Nothing -> return Nothing
+ 
 
-
-setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> m ()
+setProgress :: (MonadHandler m, Flat x) => PrPath -> x -> StateT PresProgress m ()
 setProgress path prog = do
-   progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-                 <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] ByteString
-       <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
-                          . fmap (progKeyRsr Arr.!) )
-             <$> lookupSessionFlat "progress"
+   PresProgress progs <- get
+   
    let progs' = Map.insert (Txt.words path)
                            (flat prog) progs
-       (ListT (WriterT keyCompressed), progStepRsr')
-                  = rmRedundancy . ListT . WriterT $ Map.toList progs'
-       (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionBS "progress-steps" . compressPrPathSteps
-                    $ Arr.toList progStepRsr'
-   setSessionFlat "progress" $ compressedProgs
 
-   let Just (compressedPath :: [Int])
-           = traverse (`Map.lookup` Map.fromList (zip (Arr.toList progStepRsr') [0..]))
-                      (Txt.words path)
-                  
-   undoStack <- lookupSessionFlat "undo-stack"
-   setSessionFlat "undo-stack" $ case undoStack of
-     Nothing -> [compressedPath]
-     Just oldSteps -> compressedPath : filter (/=compressedPath) oldSteps
+   put $ PresProgress progs'
 
-revertProgress :: MonadHandler m => PrPath -> m Bool
+revertProgress :: MonadHandler m => PrPath -> StateT PresProgress m Bool
 revertProgress path = do
-   progStepRsr :: Arr.Vector Text
-       <- Arr.fromList . maybe [] decompressPrPathSteps
-                 <$> lookupSessionBS "progress-steps"
-   progKeyRsr :: Arr.Vector ByteString
-       <- Arr.fromList . maybe [] id <$> lookupSessionFlat "progress-keys"
-   progs :: Map.Map [Text] ByteString
-       <- maybe Map.empty ( Map.mapKeys (map (progStepRsr Arr.!))
-                          . fmap (progKeyRsr Arr.!))
-             <$> lookupSessionFlat "progress"
+   PresProgress progs <- get
    let progs' = Map.delete (Txt.words path) progs
-       (ListT (WriterT keyCompressed), progStepRsr')
-                  = rmRedundancy . ListT . WriterT $ Map.toList progs'
-       (compressedProgs,progKeyRsr') = rmRedundancy $ Map.fromList keyCompressed
-   setSessionFlat "progress-keys" $ Arr.toList progKeyRsr'
-   setSessionBS "progress-steps" . compressPrPathSteps
-                    $ Arr.toList progStepRsr'
-   setSessionFlat "progress" $ compressedProgs
+   put $ PresProgress progs'
                   
    return $ Txt.words path`Map.member`progs
 
-lookupSessionFlat :: (MonadHandler m, Flat a) => Text -> m (Maybe a)
-lookupSessionFlat = fmap (either (const Nothing) Just
-                            . unflat . BSL.fromStrict =<<) . lookupSessionBS
-
-setSessionFlat :: (MonadHandler m, Flat a) => Text -> a -> m ()
-setSessionFlat k = setSessionBS k . flat
-
-modifySessionFlat :: (MonadHandler m, Flat a, Flat a)
-                      => Text -> (Maybe a->a) -> m ()
-modifySessionFlat k f = do
-   a <- lookupSessionFlat k
-   setSessionFlat k $ f a
      
 
 yeamer :: Presentation -> IO ()
