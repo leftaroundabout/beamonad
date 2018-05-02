@@ -326,6 +326,7 @@ getExactPositionR pPosition = do
                          return;
                      }
                      e.stopPropagation();
+                     hasErrored = false;
                      $.ajax({
                            contentType: "application/json",
                            processData: false,
@@ -338,9 +339,17 @@ getExactPositionR pPosition = do
                               } else {
                                  window.location.href = newURL;
                               }
+                           },
+                           error: function(jqXHR, textStatus, errorThrown) {
+                              $("body").css("cursor","not-allowed");
+                              hasErrored = true;
+                              setTimeout(function() {
+                                 $("body").css("cursor","auto")}, 500);
                            }
                         });
-                     setTimeout(function() {$("body").css("cursor","wait")}, 150);
+                     setTimeout(function() {
+                         if (!hasErrored) {$("body").css("cursor","wait")}
+                     }, 150);
                  })
                |]
           (here %~ spanClass thisChoice)
