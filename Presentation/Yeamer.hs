@@ -639,9 +639,6 @@ getChPosR oldPosition posStep = do
 
 changePos_State :: PositionChange -> StateT PresProgress Handler ()
 changePos_State (PositionChange path isRevert) = do
-    if isRevert
-     then mempty <$> revertProgress path
-     else do
         let go, go' :: ( PrPath            -- ^ The path traversed already
                        , Text->PrPath      -- ^ How to use new path-chunks
                        , Text )            -- ^ Path-chunk being constructed
@@ -682,6 +679,9 @@ changePos_State (PositionChange path isRevert) = do
                       skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
                       return Nothing
                     Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
+                 (_, [[]], True) -> do
+                   revertProgress path
+                   return Nothing
                  (Just k, [], False) -> do
                    key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
                    case key' of
