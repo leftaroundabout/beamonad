@@ -642,8 +642,12 @@ changePos_State (PositionChange path isRevert) = do
     if isRevert
      then mempty <$> revertProgress path
      else do
-        let go, go' :: (PrPath, Text->PrPath, Text) -> [String] -> IPresentation IO r
-                     -> StateT PresProgress Handler (Maybe r)
+        let go, go' :: ( PrPath            -- ^ The path traversed already
+                       , Text->PrPath      -- ^ How to use new path-chunks
+                       , Text )            -- ^ Path-chunk being constructed
+                    -> [String]            -- ^ Path yet to traverse
+                    -> IPresentation IO r  -- ^ Presentation which to proceed
+                    -> StateT PresProgress Handler (Maybe r)
             go _ [] (StaticContent _) = return $ Just ()
             go _ [] (Pure x) = return $ Just x
             go _ [] (Interactive _ q) = Just <$> liftIO q
@@ -662,28 +666,29 @@ changePos_State (PositionChange path isRevert) = do
             go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
             go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
                 = const Nothing <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
-            go (crumbh, choiceName, crumbp) (('1':prog):path') (Dependent def opt) = do
+            go (crumbh, choiceName, crumbp) path' (Dependent def opt) = do
                key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-               case key of
-                 Just k -> go' (crumbh, choiceName, crumbp<>"1") (prog:path') $ opt k
-                 Nothing -> do
+               case (key, path', isRevert) of
+                 (Just k, ('1':prog):path'', _)
+                      -> go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+                 (Nothing, ('1':prog):path'', _) -> do
                    Just k <- go' (crumbh, choiceName, crumbp<>"0") [] def
-                   go' (crumbh, choiceName, crumbp<>"1") (prog:path') $ opt k
-            go (crumbh,choiceName,crumbp) [[]] (Dependent def opt) = do
-               key <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
-               case key of
-                 Just k -> do
-                   setProgress path k
-                   skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
-                   return Nothing
-                 Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
-            go (crumbh, choiceName, crumbp) [] (Dependent _ opt) = do
-               key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-               case key of
-                 Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
-                 Nothing -> return Nothing
-            go _ (dir:_) (Dependent _ _)
-               = error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
+                   go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+                 (_, [[]], False) -> do
+                   key' <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
+                   case key' of
+                    Just k -> do
+                      setProgress path k
+                      skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
+                      return Nothing
+                    Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
+                 (Just k, [], False) -> do
+                   key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
+                   case key' of
+                    Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
+                    Nothing -> return Nothing
+                 (_, dir:_, _)
+                  -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
             go crumbs path (Styling _ cont) = go crumbs path cont
             go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
               | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
