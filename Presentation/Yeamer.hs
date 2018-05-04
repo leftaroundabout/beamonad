@@ -639,111 +639,117 @@ getChPosR oldPosition posStep = do
 
 changePos_State :: PositionChange -> StateT PresProgress Handler ()
 changePos_State (PositionChange path isRevert) = do
-        let go, go' :: ( PrPath            -- ^ The path traversed already
-                       , Text->PrPath      -- ^ How to use new path-chunks
-                       , Text )            -- ^ Path-chunk being constructed
-                    -> [String]            -- ^ Path yet to traverse
-                    -> IPresentation IO r  -- ^ Presentation which to proceed
-                    -> StateT PresProgress Handler (Maybe r)
-            go _ [] (StaticContent _) = return $ Just ()
-            go _ [] (Pure x) = return $ Just x
-            go _ [] (Interactive _ q) = Just <$> liftIO q
-            go crumbs path (Encaps (WithHeading _) (Identity cont))
-                = fmap Identity <$> go crumbs path cont
-            go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
-                = sequence . WriterT <$> traverse
-                     (\(c,ζ) -> (,ζ) <$> go (crumbh<>case ζ of
-                                               HTMDiv i -> " div."<>i
-                                               HTMSpan i -> " span."<>i
-                                              , choiceName, crumbp) [] c)
-                     conts
-            go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
-            go _ [] (Resultless c) = return $ Just ()
-            go crumbs path (Resultless c) = const(Just()) <$> go crumbs path c
-            go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
-            go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
-                = const Nothing <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
-            go (crumbh, choiceName, crumbp) path' (Dependent def opt) = do
-               key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-               case (key, path', isRevert) of
-                 (Just k, ('1':prog):path'', _)
-                      -> go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
-                 (Nothing, ('1':prog):path'', _) -> do
-                   Just k <- go' (crumbh, choiceName, crumbp<>"0") [] def
-                   go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
-                 (_, [[]], False) -> do
-                   key' <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
-                   case key' of
-                    Just k -> do
-                      setProgress path k
-                      skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
-                      return Nothing
-                    Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
-                 (_, [[]], True) -> do
-                   revertProgress path
-                   return Nothing
-                 (Just k, [], False) -> do
-                   key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-                   case key' of
-                    Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
-                    Nothing -> return Nothing
-                 (_, dir:_, _)
-                  -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
-            go crumbs path (Styling _ cont) = go crumbs path cont
-            go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
-              | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
-                            <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
-              , Just subSel <- lookup dividt $ swap<$>conts
-                   = fmap (WriterT . pure . (,dividt)) <$> go (crumbh, choiceName, "") path subSel
-            go _ [] pres
-               = error $ "Need further path information to extract value from a "++outerConstructorName pres
-            go _ (dir:_) pres
-               = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
-            go' crumbs path p@(Dependent _ _)  = go crumbs path p
-            go' (crumbh,choiceName,crumbp) ([]:t) p
-                   = go ( crumbh<>" span."<>choiceName crumbp
-                        , disambiguateChoiceName choiceName
-                        , "" ) t p
-            go' (crumbh,choiceName,crumbp) [] p
-             | not $ Txt.null crumbp
-                   = go ( crumbh<>" span."<>choiceName crumbp
-                        , disambiguateChoiceName choiceName
-                        , "" ) [] p
-            go' crumbs path p = go crumbs path p
-            skipContentless :: (PrPath, Text->PrPath, Text)
-                                   -> IPresentation IO r
-                                   -> StateT PresProgress Handler (Maybe r)
-            skipContentless _ (Pure x) = return $ Just x
-            skipContentless crumbs (Interactive p a) = do
-               ll <- skipContentless crumbs p
-               case ll of
-                 Just _ -> Just <$> liftIO a
+    PresentationServer presentation _ _ <- getYesod
+    go ("", defaultChoiceName, "") (finePath <$> Txt.words path) presentation
+    return ()
+
+ where -- | Traverse into the presentation tree structure to find a suitable
+       --   key to set at the relevant position.
+       --   'go'' will disambiguate path names of different branches.
+       go, go' :: ( PrPath            -- ^ The path traversed already
+                  , Text->PrPath      -- ^ How to use new path-chunks
+                  , Text )            -- ^ Path-chunk being constructed
+               -> [String]            -- ^ Path yet to traverse
+               -> IPresentation IO r  -- ^ Presentation which to proceed
+               -> StateT PresProgress Handler (Maybe r)
+       go _ [] (StaticContent _) = return $ Just ()
+       go _ [] (Pure x) = return $ Just x
+       go _ [] (Interactive _ q) = Just <$> liftIO q
+       go crumbs path (Encaps (WithHeading _) (Identity cont))
+           = fmap Identity <$> go crumbs path cont
+       go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
+           = sequence . WriterT <$> traverse
+                (\(c,ζ) -> (,ζ) <$> go (crumbh<>case ζ of
+                                          HTMDiv i -> " div."<>i
+                                          HTMSpan i -> " span."<>i
+                                         , choiceName, crumbp) [] c)
+                conts
+       go crumbs path (Deterministic f c) = fmap f <$> go crumbs path c
+       go _ [] (Resultless c) = return $ Just ()
+       go crumbs path (Resultless c) = const(Just()) <$> go crumbs path c
+       go crumbs path (Interactive p _) = const Nothing <$> go crumbs path p
+       go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
+           = const Nothing <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
+       go (crumbh, choiceName, crumbp) path' (Dependent def opt) = do
+          key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
+          case (key, path', isRevert) of
+            (Just k, ('1':prog):path'', _)
+                 -> go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+            (Nothing, ('1':prog):path'', _) -> do
+              Just k <- go' (crumbh, choiceName, crumbp<>"0") [] def
+              go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+            (_, [[]], False) -> do
+              key' <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
+              case key' of
+               Just k -> do
+                 setProgress path k
+                 skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
+                 return Nothing
+               Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
+            (_, [[]], True) -> do
+              revertProgress path
+              return Nothing
+            (Just k, [], False) -> do
+              key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
+              case key' of
+               Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
+               Nothing -> return Nothing
+            (_, dir:_, _)
+             -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
+       go crumbs path (Styling _ cont) = go crumbs path cont
+       go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
+         | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
+                       <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
+         , Just subSel <- lookup dividt $ swap<$>conts
+              = fmap (WriterT . pure . (,dividt)) <$> go (crumbh, choiceName, "") path subSel
+       go _ [] pres
+          = error $ "Need further path information to extract value from a "++outerConstructorName pres
+       go _ (dir:_) pres
+          = error $ "Cannot index ("++dir++") further into a "++outerConstructorName pres
+       go' crumbs path p@(Dependent _ _)  = go crumbs path p
+       go' (crumbh,choiceName,crumbp) ([]:t) p
+              = go ( crumbh<>" span."<>choiceName crumbp
+                   , disambiguateChoiceName choiceName
+                   , "" ) t p
+       go' (crumbh,choiceName,crumbp) [] p
+        | not $ Txt.null crumbp
+              = go ( crumbh<>" span."<>choiceName crumbp
+                   , disambiguateChoiceName choiceName
+                   , "" ) [] p
+       go' crumbs path p = go crumbs path p
+       
+       skipContentless :: (PrPath, Text->PrPath, Text)
+                              -> IPresentation IO r
+                              -> StateT PresProgress Handler (Maybe r)
+       skipContentless _ (Pure x) = return $ Just x
+       skipContentless crumbs (Interactive p a) = do
+          ll <- skipContentless crumbs p
+          case ll of
+            Just _ -> Just <$> liftIO a
+            Nothing -> return Nothing
+       skipContentless (crumbh,choiceName,crumbp) (Dependent def opt) = do
+          let thisDecision = crumbh <> " span."<>choiceName crumbp
+          key <- lookupProgress thisDecision
+          case key of
+            Just k -> skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
+            Nothing -> do
+               key' <- skipContentless (crumbh, choiceName, crumbp<>"0") def
+               case key' of
+                 Just k' -> do
+                   setProgress thisDecision k'
+                   skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
                  Nothing -> return Nothing
-            skipContentless (crumbh,choiceName,crumbp) (Dependent def opt) = do
-               let thisDecision = crumbh <> " span."<>choiceName crumbp
-               key <- lookupProgress thisDecision
-               case key of
-                 Just k -> skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
-                 Nothing -> do
-                    key' <- skipContentless (crumbh, choiceName, crumbp<>"0") def
-                    case key' of
-                      Just k' -> do
-                        setProgress thisDecision k'
-                        skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
-                      Nothing -> return Nothing
-            skipContentless crumbs (Styling _ c) = skipContentless crumbs c
-            skipContentless crumbs (Resultless c)
-                = fmap (const ()) <$> skipContentless crumbs c
-            skipContentless crumbs (Deterministic f c)
-                = fmap f <$> skipContentless crumbs c
-            skipContentless _ (StaticContent _) = return Nothing
-            skipContentless _ (Encaps _ _) = return Nothing
-            skipContentless _ p = error
-             $ "`skipContentless` does not support "++outerConstructorName p
-        PresentationServer presentation _ _ <- getYesod
-        go ("", defaultChoiceName, "") (finePath <$> Txt.words path) presentation
-        return ()
- where finePath p
+       skipContentless crumbs (Styling _ c) = skipContentless crumbs c
+       skipContentless crumbs (Resultless c)
+           = fmap (const ()) <$> skipContentless crumbs c
+       skipContentless crumbs (Deterministic f c)
+           = fmap f <$> skipContentless crumbs c
+       skipContentless _ (StaticContent _) = return Nothing
+       skipContentless _ (Encaps _ _) = return Nothing
+       skipContentless _ p = error
+        $ "`skipContentless` does not support "++outerConstructorName p
+
+       finePath p
         | Just prog <- fmap (Txt.dropWhile (=='n'))
                     $ Txt.stripPrefix "span."
                      =<< Txt.stripSuffix "slide" p
