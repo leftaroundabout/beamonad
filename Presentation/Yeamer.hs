@@ -678,8 +678,13 @@ changePos_State (PositionChange path isRevert) = do
        go (crumbh, choiceName, crumbp) path' (Dependent def opt) = do
           key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
           case (key, path', isRevert) of
-            (Just k, ('1':prog):path'', _)
-                 -> go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+            (Just k, ('1':prog):path'', _) -> do
+              (resKey, rHasContent)
+                   <- go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+              if isRevert && not rHasContent then do
+                 revertProgress $ crumbh <> " span."<>choiceName crumbp
+                 return (Nothing, False)
+               else return (resKey, rHasContent)
             (Nothing, ('1':prog):path'', _) -> do
               (Just k, _) <- go' (crumbh, choiceName, crumbp<>"0") [] def
               go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
@@ -693,7 +698,9 @@ changePos_State (PositionChange path isRevert) = do
                Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
             (_, [[]], True) -> do
               revertProgress path
-              return (Nothing, False)
+              lHasContent
+                    <- hasDisplayableContent (crumbh, choiceName, crumbp<>"0") def
+              return (Nothing, lHasContent)
             (Just k, [], False) -> do
               key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
               case key' of
