@@ -701,11 +701,10 @@ changePos_State (PositionChange path isRevert) = do
               lHasContent
                     <- hasDisplayableContent (crumbh, choiceName, crumbp<>"0") def
               return (Nothing, lHasContent)
-            (Just k, [], False) -> do
-              key' <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-              case key' of
-               Just k -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
-               Nothing -> return (Nothing, False)
+            (Just k, [], False)
+             -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
+            (Nothing, [], False)
+             -> return (Nothing, False)
             (_, dir:_, _)
              -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
        go crumbs path (Styling _ cont) = go crumbs path cont
