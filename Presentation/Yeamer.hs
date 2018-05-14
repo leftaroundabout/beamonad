@@ -713,7 +713,10 @@ changePos_State (PositionChange path isRevert) = do
                        <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
          , Just subSel <- lookup dividt $ swap<$>conts
               = first (fmap $ WriterT . pure . (,dividt))
-                  <$> go (crumbh, choiceName, "") path subSel
+                  <$> go (crumbh<>case dividt of
+                                 HTMDiv i -> " div."<>i
+                                 HTMSpan i -> " span."<>i
+                                , choiceName, "") path subSel
        go _ [] pres
           = error $ "Need further path information to extract value from a "++outerConstructorName pres
        go _ (dir:_) pres
