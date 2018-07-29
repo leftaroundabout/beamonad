@@ -26,9 +26,31 @@ main = yeamer . styling style $ do
      ── do
      "It is based on a free-monad like data structure, with monad "<>verb">>"
       <>" representing sequencing of slides in the presentation. Thus, if"
-      <>" you click "<>emph"here"
+      <>" you click "<>emph"here..."
      "...the viewer will switch to the next item in the containing "<>verb"do"
       <>"-block. Use "<>verb"ctrl+click"<>" to revert this."
+
+   "Slide content"
+    ====== do
+     "Yeamer uses your web browser for rendering the slides. Therefore you can"
+        <>" in principle insert any HTML code, e.g. though Hamlet quasi quotes."
+       ──"In most cases, it is however recommended to simply use the "
+        <>verb"OverloadedStrings"<>" extension so text can be written in ordinary"
+        <>" Haskell string literals, and to combine elements with monoid operators."
+     
+     "(You don't need to worry about <special> characters &other; HTML pitfalls"
+      <>" – anything you put in a string literal will appear as-is.)"
+
+     "For the layout, we don't re-invent the wheel: CSS does that job fine."
+      ──styling ([cassius|
+              .reddened
+                  color: #f88
+              .caps
+                  font-size: 85%
+                  text-transform: uppercase |]())
+         ("You can at any point add "<> "reddened"#%"rules" <>" for"
+         <>"caps"#%"css"<>" styling. Usually it's best to do it just once"
+         <>" globally, and define "<>emph"small helper functions"<>" for details.")
 
    return ()
 
@@ -51,7 +73,8 @@ style = [cassius|
    h1
      font-size: 150%
    div
-     height: 100%
+     width: 95%
+     height: 95%
      text-align: center
      margin: auto
    .headed-container
