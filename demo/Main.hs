@@ -30,7 +30,7 @@ main = yeamer . styling style $ do
      "...the viewer will switch to the next item in the containing "<>verb"do"
       <>"-block. Use "<>verb"ctrl+click"<>" to revert this."
 
-   "Slide content"
+   "Slide content Ⅰ"
     ====== do
      "Yeamer uses your web browser for rendering the slides. Therefore you can"
         <>" in principle insert any HTML code, e.g. though Hamlet quasi quotes."
@@ -76,6 +76,12 @@ main = yeamer . styling style $ do
         "At the browser level, this is implemented with CSS3 grids, which"
             <>" automatically negotiate suitable width, height, and word-wrap"
             <>" for each cell."
+   
+   "Slide content Ⅱ"
+    ====== do
+     "For including static images, "<>verb"imageFromFile"<>" can be used."
+      ──
+      imageFromFile "img/beamonad.svg"
    
    return ()
 
