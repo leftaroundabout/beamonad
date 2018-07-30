@@ -52,6 +52,31 @@ main = yeamer . styling style $ do
          <>"caps"#%"css"<>" styling. Usually it's best to do it just once"
          <>" globally, and define "<>emph"small helper functions"<>" for details.")
 
+   "Slide composition"
+    ====== do
+     "There are three different ways in which "<>verb"Presentation"
+                  <>" is a semigroup, allowing you to put together slides"
+                  <>" out of content chunks:"
+      ── do
+      "The standard Monoid operator "<>verb"<>"<>" simply concatenates"
+       <>" text elements, or else brings the content as close together as possible."
+      "The stacking operator "<>verb"──"
+       ──"puts one element on top"
+       ──"of another."
+      (verb"==="<>"is an ASCII alternative,")
+       ==="it does the same thing."
+       ━━"So does "<>verb"━━"<>", except it has lower precedence."
+      "The siding operator "<>verb"│"<>"puts one element beside another."
+       ┃ "Alternatives: "<>verb"|||"<>" and "<>verb"┃"<>"."
+     
+     "All of these operators can be used together," │ "in any nesting."
+                    ──
+       "This allows arranging elements on a slide in an almost “WYSiWYG-like” way."
+      ┃
+        "At the browser level, this is implemented with CSS3 grids, which"
+            <>" automatically negotiate suitable width, height, and word-wrap"
+            <>" for each cell."
+   
    return ()
 
 
