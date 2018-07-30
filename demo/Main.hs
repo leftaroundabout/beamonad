@@ -79,9 +79,23 @@ main = yeamer . styling style $ do
    
    "Slide content Ⅱ"
     ====== do
-     "For including static images, "<>verb"imageFromFile"<>" can be used."
+     "Static images can be included with "<>verb"imageFromFile"<>"."
       ──
       imageFromFile "img/beamonad.svg"
+     
+     "Especially for mathematical or data plots, it can make sense to generate"
+       <>" the images on-the-fly right from the Haskell code. You can use"
+       <>" anything that's able to generate image files, most popular being the "
+       <>verb"diagrams"<>" library."
+      ── do
+       imageFromDiagram (let line = Dia.fromVertices [0 Dia.^& 0, 1 Dia.^& 0.1]
+                         in Dia.lc Dia.green . Dia.lwO 3 $ line Dia.=== line)
+       "It is "<>emph"not"<>" necessary to come up with filenames for such images."
+        <>small(" (Internally, "<>verb"yeamer"<>" will use automatic filenames based"
+                <>" on the hashed image content.)")
+     "Other content that can easily be included: videos, maths equations,"
+       <>" step-by-step animations..."
+      ──"You come up with the next idea!"
    
    return ()
 
@@ -89,7 +103,7 @@ main = yeamer . styling style $ do
 imageFromDiagram :: Dia.Diagram Dia.Cairo -> Presentation
 imageFromDiagram dia = imageFromFileSupplier "png"
            $ \tgtFile -> Dia.renderCairo tgtFile
-                           (Dia.mkSizeSpec $ Just 640 Dia.^& Just 480) dia
+                           (Dia.mkSizeSpec $ Just 400 Dia.^& Just 200) dia
 
 
 style = [cassius|
@@ -115,6 +129,8 @@ style = [cassius|
      flex-direction: column
    .emph
      font-style: italic
+   .small
+     font-size: 67%
    .verb
      display: inline-block
      font-size: 86%
@@ -124,3 +140,4 @@ style = [cassius|
   |] ()
 emph = ("emph"#%)
 verb = ("verb"#%)
+small = ("small"#%)
