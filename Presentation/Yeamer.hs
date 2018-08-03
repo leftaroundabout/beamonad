@@ -122,6 +122,10 @@ getSymbolicLinkTarget = readSymbolicLink
 pathIsSymbolicLink _ = pure True
 #endif
 
+#if !MIN_VERSION_flat(0,4,0)
+instance (Flat a) => Flat (Identity a)
+#endif
+
 data Container t where
   WithHeading :: Html -> Container Identity
   ManualCSSClasses :: Container (WriterT HTMChunkK [])
