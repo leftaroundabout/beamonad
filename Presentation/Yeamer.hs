@@ -179,6 +179,7 @@ mkYesod "PresentationServer" [parseRoutes|
 |]
 instance Yesod PresentationServer where
   addStaticContent = embedStaticContent getStatic StaticR Right
+  approot = ApprootRelative
 instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r

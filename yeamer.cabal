@@ -26,7 +26,7 @@ library
                        Data.Traversable.Redundancy
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.11
-                       , yesod >=1.4 && <1.5
+                       , yesod >=1.4 && <1.7
                        , yesod-form
                        , yesod-static
                        , js-jquery
