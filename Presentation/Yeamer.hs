@@ -29,7 +29,7 @@ module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
                            , yeamer
                            -- * Primitives
-                           , staticContent, serverSide
+                           , staticContent, tweakContent, serverSide
                            -- ** Maths
                            , ($<>), maths
                            -- ** Media content
@@ -545,6 +545,11 @@ styling s a = Styling [s] a
 staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
 
+tweakContent :: Sessionable r => (Html -> Html) -> IPresentation m r -> IPresentation m r
+tweakContent f = fmap runIdentity
+               . Encaps (CustomEncapsulation $ f . runIdentity)
+               . Identity
+
 infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
@@ -666,6 +671,9 @@ changePos_State (PositionChange path isRevert) = do
              . Just <$> liftIO q
        go crumbs path (Encaps (WithHeading _) (Identity cont))
            = (,True) . fmap Identity . fst <$> go crumbs path cont
+       go crumbs path (Encaps (CustomEncapsulation _) cont)
+           = (,True) . sequence
+              <$> traverse (\c -> fst <$> go crumbs path c) cont
        go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
            = (,True) . sequence . WriterT <$> traverse
                 (\(c,ζ) -> (,ζ) . fst <$> go (crumbh<>case ζ of
