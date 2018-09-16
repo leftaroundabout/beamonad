@@ -57,9 +57,8 @@ main = yeamer . styling ([lucius|
 
    "Code block"
     ====== do
-    tweakContent (\c -> [hamlet|<pre>#{c}|]())
-       . fmap (\()->())
-       $ [verbatim|
+     fmap (\()->())
+       $ [plaintext|
            bla
              blub
                bli

@@ -35,7 +35,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Media content
                            , imageFromFile, mediaFromFile, imageFromFileSupplier
                            -- ** Code / plaintext
-                           , verbatim, verbatimWithin
+                           , verbatim, plaintext, verbatimWithin
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
@@ -602,6 +602,11 @@ verbatimWithin env
        preescapeChar '>' = "&gt;"
        preescapeChar '&' = "&amp;"
        preescapeChar c = [c]
+
+-- | A simple version of 'verbatim' that gives the HTML wrapped in @<pre>@ tags, so
+--   it will (by default) appear in a monospace font.
+plaintext :: QuasiQuoter  -- ^ ≈ @'String' -> 'IPresentation' m ()@
+plaintext = verbatimWithin 'HTM.pre
        
 -- | Display an image generated on-the-fly in the server. The image will be
 --   stored temporarily, in a content-indexed fashion.
