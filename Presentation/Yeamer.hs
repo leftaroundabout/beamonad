@@ -571,9 +571,6 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
                         $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
 
-fromPreescapedHtml :: Monoid r => String -> IPresentation m r
-fromPreescapedHtml = staticContent . HTM.preEscapedString
-
 -- | Include a piece of plaintext, preserving all formatting. To be used in an
 --   oxford bracket.
 --
@@ -590,7 +587,8 @@ verbatimWithin :: Name         -- ^ A function @'Html' -> 'Html'@ that should be
                                --   always use the wrapper.
 verbatimWithin env
           = QuasiQuoter (pure . verbExp . preproc) undefined undefined undefined
- where verbExp = AppE (VarE env) . AppE (VarE 'fromPreescapedHtml) . LitE . StringL
+ where verbExp = AppE (VarE 'staticContent)
+             . AppE (VarE env) . AppE (VarE 'HTM.preEscapedString) . LitE . StringL
        preproc s
          | (initL, '\n':posNewl) <- break (=='\n') s
          , all (==' ') initL
