@@ -37,6 +37,9 @@ main = yeamer . styling ([lucius|
                     height: 100%;
                     text-align: center;
                   }
+                  pre {
+                    text-align: left;
+                  }
                   .headed-container {
                     height: 80%;
                   }
@@ -51,6 +54,17 @@ main = yeamer . styling ([lucius|
     ======
     "Simple test “presentation”"
 
+
+   "Code block"
+    ====== do
+    tweakContent (\c -> [hamlet|<pre>#{c}|]())
+       . fmap (\()->())
+       $ [verbatim|
+           bla
+             blub
+               bli
+             blum
+          |]
 
    "Some maths"
     ======

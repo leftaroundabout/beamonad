@@ -34,6 +34,8 @@ module Presentation.Yeamer ( Presentation
                            , ($<>), maths
                            -- ** Media content
                            , imageFromFile, mediaFromFile, imageFromFileSupplier
+                           -- ** Code / plaintext
+                           , verbatim
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
@@ -69,7 +71,8 @@ import Text.Julius (rawJS)
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
 import qualified Language.Javascript.JQuery as JQuery
-import Language.Haskell.TH.Syntax (Exp(LitE), Lit(StringL), runIO)
+import Language.Haskell.TH.Syntax (Exp(LitE, AppE, VarE), Lit(StringL), runIO)
+import Language.Haskell.TH.Quote
 
 import qualified CAS.Dumb.Symbols as TMM
 import qualified CAS.Dumb.Tree as TMM
@@ -79,6 +82,7 @@ import qualified Text.LaTeX as LaTeX
 import qualified Text.TeXMath as MathML
 import qualified Text.XML.Light as XML
 
+import Data.List (intercalate)
 import Data.Foldable (fold)
 import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
@@ -567,6 +571,27 @@ renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex
                         $ MathML.writeMathML dispSty exps
          Left err -> error $ "Failed to re-parse generated LaTeX. "++err
 
+fromPreescapedHtml :: Monoid r => String -> IPresentation m r
+fromPreescapedHtml = staticContent . HTM.preEscapedString
+
+-- | Include a piece of plaintext, preserving all formatting. To be used in an
+--   oxford bracket.
+verbatim :: QuasiQuoter  -- ^ ≈ @'String' -> 'IPresentation' m ()@
+verbatim = QuasiQuoter (pure . verbExp . preproc) undefined undefined undefined
+ where verbExp = AppE (VarE 'fromPreescapedHtml) . LitE . StringL
+       preproc s
+         | (initL, '\n':posNewl) <- break (=='\n') s
+         , all (==' ') initL
+                      = preescapeBlock posNewl
+         | otherwise  = preescapeInline s
+       preescapeBlock s = intercalate "<br>" $ drop zeroIndent <$> sLines
+        where zeroIndent = minimum $ length . takeWhile (==' ') <$> sLines
+              sLines = lines s
+       preescapeInline = concatMap preescapeChar
+       preescapeChar '<' = "&lt;"
+       preescapeChar '>' = "&gt;"
+       preescapeChar '&' = "&amp;"
+       preescapeChar c = [c]
        
 -- | Display an image generated on-the-fly in the server. The image will be
 --   stored temporarily, in a content-indexed fashion.
