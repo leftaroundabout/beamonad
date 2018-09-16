@@ -35,7 +35,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Media content
                            , imageFromFile, mediaFromFile, imageFromFileSupplier
                            -- ** Code / plaintext
-                           , verbatim
+                           , verbatim, verbatimWithin
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
@@ -71,7 +71,7 @@ import Text.Julius (rawJS)
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
 import qualified Language.Javascript.JQuery as JQuery
-import Language.Haskell.TH.Syntax (Exp(LitE, AppE, VarE), Lit(StringL), runIO)
+import Language.Haskell.TH.Syntax (Exp(LitE, AppE, VarE), Lit(StringL), Name, runIO)
 import Language.Haskell.TH.Quote
 
 import qualified CAS.Dumb.Symbols as TMM
@@ -576,9 +576,21 @@ fromPreescapedHtml = staticContent . HTM.preEscapedString
 
 -- | Include a piece of plaintext, preserving all formatting. To be used in an
 --   oxford bracket.
+--
+--   In practice, you probably want to use this for monospace plaintext, which should
+--   appear in a @<pre>@ or @<textarea>@ tag. Use the specialised quoters for that.
 verbatim :: QuasiQuoter  -- ^ ≈ @'String' -> 'IPresentation' m ()@
-verbatim = QuasiQuoter (pure . verbExp . preproc) undefined undefined undefined
- where verbExp = AppE (VarE 'fromPreescapedHtml) . LitE . StringL
+verbatim = verbatimWithin 'id
+
+-- | Convenience wrapper to generate quasi-quoters that will wrap code in any suitable
+--   HTML environment.
+verbatimWithin :: Name         -- ^ A function @'Html' -> 'Html'@ that should be
+                               --   used for presenting the (pre-escaped) plaintext.
+               -> QuasiQuoter  -- ^ A specialised version of 'verbatim' that will
+                               --   always use the wrapper.
+verbatimWithin env
+          = QuasiQuoter (pure . verbExp . preproc) undefined undefined undefined
+ where verbExp = AppE (VarE env) . AppE (VarE 'fromPreescapedHtml) . LitE . StringL
        preproc s
          | (initL, '\n':posNewl) <- break (=='\n') s
          , all (==' ') initL
