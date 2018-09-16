@@ -71,7 +71,8 @@ import Text.Julius (rawJS)
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
 import qualified Language.Javascript.JQuery as JQuery
-import Language.Haskell.TH.Syntax (Exp(LitE, AppE, VarE), Lit(StringL), Name, runIO)
+import Language.Haskell.TH.Syntax ( Exp(LitE, AppE, VarE, ConE)
+                                  , Lit(StringL), Name, runIO )
 import Language.Haskell.TH.Quote
 
 import qualified CAS.Dumb.Symbols as TMM
@@ -587,7 +588,7 @@ verbatimWithin :: Name         -- ^ A function @'Html' -> 'Html'@ that should be
                                --   always use the wrapper.
 verbatimWithin env
           = QuasiQuoter (pure . verbExp . preproc) undefined undefined undefined
- where verbExp = AppE (VarE 'staticContent)
+ where verbExp = AppE (ConE 'StaticContent)
              . AppE (VarE env) . AppE (VarE 'HTM.preEscapedString) . LitE . StringL
        preproc s
          | (initL, '\n':posNewl) <- break (=='\n') s

@@ -56,13 +56,11 @@ main = yeamer . styling ([lucius|
 
 
    "Code block"
-    ====== do
-     fmap (\()->())
-       $ [plaintext|
-           bla
-             blub
-               bli
-             blum
+    ====== [plaintext|
+       bla
+         blub
+           bli
+         blum
           |]
 
    "Some maths"
