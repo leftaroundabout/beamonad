@@ -34,6 +34,8 @@ module Presentation.Yeamer ( Presentation
                            , ($<>), maths
                            -- ** Media content
                            , imageFromFile, mediaFromFile, imageFromFileSupplier
+                           -- ** Arbitrary file serving
+                           , useFile, useFileSupplier
                            -- ** Code / plaintext
                            , verbatim, plaintext, verbatimWithin
                            -- * Structure / composition
@@ -617,6 +619,7 @@ imageFromFileSupplier :: String               -- ^ File extension
 imageFromFileSupplier ext = includeMediaFile SimpleImage ext . Left
 
 -- | Display an image that lies on the server as any ordinary static file.
+--   This is a special case of 'useFile', wrapping the file in an @<img>@ tag.
 imageFromFile :: FilePath -> IPresentation IO ()
 imageFromFile file = includeMediaFile SimpleImage (takeExtension file) $ Right file
 
@@ -627,7 +630,7 @@ mediaFromFile :: FilePath -> IPresentation IO ()
 mediaFromFile file = includeMediaFile (guessMediaFileSetup fileExt) fileExt $ Right file
  where fileExt = takeExtension file
 
-guessMediaFileSetup :: String -> MediaFileSetup
+guessMediaFileSetup :: String -> FileUsageSetup
 guessMediaFileSetup fileExt
   | fileExt`elem`knownImgFormats    = SimpleImage
   | fileExt`elem`knownVideoFormats  = SimpleVideo
@@ -636,11 +639,25 @@ guessMediaFileSetup fileExt
  where knownImgFormats = ('.':)<$>words "png gif jpg jpeg"
        knownVideoFormats = ('.':)<$>words "webm ogg mp4"
 
-data MediaFileSetup
+data FileUsageSetup
       = SimpleImage
       | SimpleVideo
+      | CustomFile (Url -> Html)
 
-includeMediaFile :: MediaFileSetup -> FilePath
+type Url = FilePath
+
+useFile :: FilePath            -- ^ File that should be served to the client
+        -> (Url -> Html)       -- ^ How it should be used in the presentation
+        -> IPresentation IO ()
+useFile file use = includeMediaFile (CustomFile use) (takeExtension file) $ Right file
+
+useFileSupplier :: String               -- ^ File extension
+                -> (FilePath -> IO ())  -- ^ Server-side file-providing action
+                -> (Url -> Html)        -- ^ How to use the file client-side
+                -> IPresentation IO ()
+useFileSupplier ext supplier use = includeMediaFile (CustomFile use) ext $ Left supplier
+
+includeMediaFile :: FileUsageSetup -> FilePath
              -> Either (FilePath -> IO ()) FilePath -> IPresentation IO ()
 includeMediaFile mediaSetup fileExt fileSupp = do
    let prepareServing file hashLen completeHash = do
@@ -681,6 +698,7 @@ includeMediaFile mediaSetup fileExt fileSupp = do
     in StaticContent $ case mediaSetup of
          SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
+         CustomFile use -> use servableFile
 
 
 getChPosR :: PresProgress -> PositionChange -> Handler Text
