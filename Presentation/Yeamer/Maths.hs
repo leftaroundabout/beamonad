@@ -16,6 +16,7 @@ module Presentation.Yeamer.Maths
                 ( module Presentation.Yeamer
                 , module Math.LaTeX.Prelude
                 , module Math.LaTeX.StringLiterals
+                , Math
                 ) where
 
 
@@ -26,3 +27,6 @@ import Math.LaTeX.Prelude hiding ( maths
 #endif
                                  )
 import Math.LaTeX.StringLiterals ()
+import Text.LaTeX (LaTeX)
+
+type Math = Expression LaTeX
