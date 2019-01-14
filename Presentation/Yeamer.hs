@@ -45,7 +45,7 @@ module Presentation.Yeamer ( Presentation
                            -- * Server configuration
                            , yeamer'
                            , YeamerServerConfig
-                           -- | Default: 14910
+                           -- | Default port is 14910
                            , yeamerTcpPort
                            ) where
 
@@ -721,14 +721,14 @@ changePos_State (PositionChange path isRevert) = do
  where -- | Traverse into the presentation tree structure to find a suitable
        --   key to set at the relevant position.
        --   'go'' will disambiguate path names of different branches.
-       go, go' :: ( PrPath            -- ^ The path traversed already
-                  , Text->PrPath      -- ^ How to use new path-chunks
-                  , Text )            -- ^ Path-chunk being constructed
-               -> [String]            -- ^ Path yet to traverse
-               -> IPresentation IO r  -- ^ Presentation which to proceed
+       go, go' :: ( PrPath            -- The path traversed already
+                  , Text->PrPath      -- How to use new path-chunks
+                  , Text )            -- Path-chunk being constructed
+               -> [String]            -- Path yet to traverse
+               -> IPresentation IO r  -- Presentation which to proceed
                -> StateT PresProgress Handler
-                           ( Maybe r  -- ^ Key value this branch yields
-                           , Bool )   -- ^ Whether it contains displayable content
+                           ( Maybe r  -- Key value this branch yields
+                           , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
@@ -934,6 +934,6 @@ yeamer' (YeamerServerConfig port) presentation = do
    warp port $ PresentationServer (preprocPres presentation) myStatic pStat
 
 -- | Run a Yesod/Warp web server that will allow the presentation to be viewed
---   in a web browser, on port 14910. This is a shorthand for @'yeamer' 'def'@.
+--   in a web browser, on port 14910. This is a shorthand for @'yeamer'' 'def'@.
 yeamer :: Presentation -> IO ()
 yeamer = yeamer' def
