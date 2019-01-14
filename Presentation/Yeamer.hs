@@ -42,6 +42,9 @@ module Presentation.Yeamer ( Presentation
                            , addHeading, (======), discardResult
                            -- * CSS
                            , divClass, spanClass, (#%), styling
+                           -- * Server configuration
+                           , yeamer'
+                           , YeamerServerConfig
                            ) where
 
 import Yesod hiding (get)
@@ -104,6 +107,7 @@ import Control.Applicative
 
 import Data.Function ((&))
 import Data.Tuple (swap)
+import Data.Default.Class
 
 import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtension
                        , (<.>), (</>) )
@@ -914,8 +918,18 @@ revertProgress path = do
 
      
 
-yeamer :: Presentation -> IO ()
-yeamer presentation = do
+data YeamerServerConfig = YeamerServerConfig
+
+instance Default YeamerServerConfig where
+  def = YeamerServerConfig
+     
+yeamer' :: YeamerServerConfig -> Presentation -> IO ()
+yeamer' YeamerServerConfig presentation = do
    createDirectoryIfMissing True pStatDir
    pStat <- static pStatDir
    warp 14910 $ PresentationServer (preprocPres presentation) myStatic pStat
+
+-- | Run a Yesod/Warp web server that will allow the presentation to be viewed
+--   in a web browser, on port 14910. This is a shorthand for @'yeamer' 'def'@.
+yeamer :: Presentation -> IO ()
+yeamer = yeamer' def
