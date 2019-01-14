@@ -45,6 +45,8 @@ module Presentation.Yeamer ( Presentation
                            -- * Server configuration
                            , yeamer'
                            , YeamerServerConfig
+                           -- | Default: 14910
+                           , yeamerTcpPort
                            ) where
 
 import Yesod hiding (get)
@@ -919,15 +921,17 @@ revertProgress path = do
      
 
 data YeamerServerConfig = YeamerServerConfig
+   { _yeamerTcpPort :: Int }
+makeLenses ''YeamerServerConfig
 
 instance Default YeamerServerConfig where
-  def = YeamerServerConfig
+  def = YeamerServerConfig 14910
      
 yeamer' :: YeamerServerConfig -> Presentation -> IO ()
-yeamer' YeamerServerConfig presentation = do
+yeamer' (YeamerServerConfig port) presentation = do
    createDirectoryIfMissing True pStatDir
    pStat <- static pStatDir
-   warp 14910 $ PresentationServer (preprocPres presentation) myStatic pStat
+   warp port $ PresentationServer (preprocPres presentation) myStatic pStat
 
 -- | Run a Yesod/Warp web server that will allow the presentation to be viewed
 --   in a web browser, on port 14910. This is a shorthand for @'yeamer' 'def'@.
