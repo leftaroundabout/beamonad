@@ -689,7 +689,7 @@ includeMediaFile mediaSetup fileExt fileSupp = do
             else makeThisLink
    imgCode <- case fileSupp of
        Right file
-          -> serverSide . prepareServing file 1 . base64md5 . BSL.fromStrict . BC8.pack
+          -> serverSide . prepareServing file 4 . base64md5 . BSL.fromStrict . BC8.pack
                  $ show file
        Left supplier
           -> serverSide $ do
@@ -698,7 +698,7 @@ includeMediaFile mediaSetup fileExt fileSupp = do
                longHash <- base64md5 <$> BSL.readFile tmpFile
                let file = pStatDir</>longHash<.>fileExt
                renameFile tmpFile file
-               prepareServing file 1 (base64md5 . BSL.fromStrict $ BC8.pack file)
+               prepareServing file 4 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
    let servableFile = "/pseudostatic"</>imgCode<.>fileExt
     in StaticContent $ case mediaSetup of
