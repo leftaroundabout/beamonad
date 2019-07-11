@@ -9,7 +9,7 @@ homepage:            https://github.com/leftaroundabout/yeamer
 license:             GPL-3
 license-file:        LICENSE
 author:              Justus Sagemüller
-maintainer:          (@) jsagemue $ uni-koeln.de
+maintainer:          (@) jsag $ hvl.no
 -- copyright:           
 category:            Keynote, Presentation, Graphics
 build-type:          Simple
@@ -44,7 +44,8 @@ library
                        , containers
                        , microlens >=0.4 && <0.6
                        , microlens-th
-                       , these >=0.7 && <0.8
+                       , these >=0.7 && <1.1
+                       , these-lens
                        , text 
                        , bytestring 
                        , base64-bytestring 

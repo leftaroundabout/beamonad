@@ -98,6 +98,7 @@ import Control.Monad.Trans.List
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
 import Data.These
+import Data.These.Lens
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
 import Data.Monoid
