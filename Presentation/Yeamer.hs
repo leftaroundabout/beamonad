@@ -492,15 +492,8 @@ instance Applicative (IPresentation m) where
   pure = Pure
   Pure f <*> x = fmap f x
   f <*> Pure x = fmap ($ x) f
---Styling s (Styling s' f) <*> x
---Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
---            => Container t -> t (IPresentation m r) -> IPresentation m (t r)
---Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
---Interactive :: Sessionable r
---       => IPresentation m () -> m r -> IPresentation m r
---Dependent :: Sessionable x
---                => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
-  -- f <*> x = ap f x
+  fs<*>xs = ap fs xs
+
 instance Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
