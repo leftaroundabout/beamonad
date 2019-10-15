@@ -1,0 +1,25 @@
+flags: {}
+packages:
+- './'
+extra-deps:
+- number-show-0.1.0.0
+- pragmatic-show-0.1.2.0
+- constrained-categories-0.4.0.0
+- trivial-constraint-0.4.0.0
+- free-vector-spaces-0.1.5.0
+- linearmap-category-0.4.0.0
+- vector-space-0.15
+- cairo-0.13.6.1
+- pango-0.13.6.1
+- diagrams-cairo-1.4.1
+- glib-0.13.7.1
+- gtk2hs-buildtools-0.13.5.3
+- TeX-my-math-0.201.2.0
+- numbered-semigroups-0.1.0.0
+- HaTeX-3.22.0.0
+- decimal-literals-0.1.0.1
+- dumb-cas-0.2.0.0
+- flat-0.3.4
+- these-lens-1
+resolver: lts-14.0
+allow-newer: true
