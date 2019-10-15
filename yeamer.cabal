@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                yeamer
-version:             0.1.0.1
+version:             0.1.0.3
 synopsis:            Yesod-based server for interactive presentation slides
 -- description:         
 homepage:            https://github.com/leftaroundabout/yeamer
