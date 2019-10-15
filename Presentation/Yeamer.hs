@@ -758,7 +758,7 @@ changePos_State (PositionChange path isRevert) = do
                  return (Nothing, False)
                else return (resKey, rHasContent)
             (Nothing, ('1':prog):path'', _) -> do
-              (Just k, _) <- go' (crumbh, choiceName, crumbp<>"0") [] def
+              (~(Just k), _) <- go' (crumbh, choiceName, crumbp<>"0") [] def
               go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
             (_, [[]], False) -> do
               (key', _) <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
