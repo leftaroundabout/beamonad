@@ -24,6 +24,7 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE ViewPatterns           #-}
+{-# LANGUAGE Rank2Types             #-}
 
 module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
@@ -140,11 +141,19 @@ pathIsSymbolicLink _ = pure True
 instance (Flat a) => Flat (Identity a)
 #endif
 
+type Sessionable = Flat
+
+data SessionableWitness a where
+  SessionableWitness :: Sessionable a => SessionableWitness a
+data EncapsulableWitness t where
+  EncapsulableWitness :: (∀ r . Sessionable r => SessionableWitness (t r))
+                           -> EncapsulableWitness t
+
 data Container t where
   WithHeading :: Html -> Container Identity
   ManualCSSClasses :: Container (WriterT HTMChunkK [])
   GriddedBlocks :: Container Gridded
-  CustomEncapsulation :: (t Html -> Html) -> Container t
+  CustomEncapsulation :: EncapsulableWitness t -> (t Html -> Html) -> Container t
 
 data HTMChunkK = HTMDiv {_hchunkCSSClass::Text} | HTMSpan {_hchunkCSSClass::Text}
           deriving (Generic, Eq, Ord)
@@ -152,8 +161,6 @@ instance JSON.FromJSON HTMChunkK
 instance JSON.ToJSON HTMChunkK
 instance Flat HTMChunkK
 makeLenses ''HTMChunkK
-
-type Sessionable = Flat
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
@@ -202,8 +209,8 @@ preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) p) = Encaps (WithHeading h) $ preprocPres<$>p
 preprocPres (Encaps ManualCSSClasses p) = Encaps ManualCSSClasses $ preprocPres<$>p
-preprocPres (Encaps (CustomEncapsulation f) p)
-                = Encaps (CustomEncapsulation f) $ preprocPres<$>p
+preprocPres (Encaps (CustomEncapsulation (EncapsulableWitness w) f) p)
+                = Encaps (CustomEncapsulation (EncapsulableWitness w) f) $ preprocPres<$>p
 preprocPres (Encaps GriddedBlocks p)
            = Styling grids
            . divClass gridClass
@@ -388,12 +395,13 @@ getExactPositionR pPosition = do
        go lvl (Encaps (WithHeading h) conts)
            = let lvl' = min 6 $ lvl + 1
                  hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
-             in go lvl' $ Encaps (CustomEncapsulation $ \(Identity contsr)
+             in go lvl' $ Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
+                                         $ \(Identity contsr)
                                     -> HTM.div HTM.! HTM.class_ "headed-container"
                                          $ hh h <> contsr
                                  ) conts
        go lvl (Encaps ManualCSSClasses conts)
-           = go lvl $ Encaps (CustomEncapsulation $ \(WriterT contsrs)
+           = go lvl $ Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness) $ \(WriterT contsrs)
                   -> foldMap (\(q,i) -> case i of
                                HTMDiv c -> [hamlet| <div class=#{withSupclass c}> #{q} |]()
                                HTMSpan c -> [hamlet| <span class=#{withSupclass c}> #{q} |]())
@@ -403,7 +411,7 @@ getExactPositionR pPosition = do
                | Just _ <- Txt.stripPrefix "autogrid_" c
                             = "autogrid "<>c
                | otherwise  = c
-       go lvl (Encaps (CustomEncapsulation f) conts) = f $ go lvl <$> conts
+       go lvl (Encaps (CustomEncapsulation (EncapsulableWitness _) f) conts) = f $ go lvl <$> conts
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
@@ -468,7 +476,7 @@ outerConstructorName (StaticContent _) = "StaticContent"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
-outerConstructorName (Encaps (CustomEncapsulation _) _) = "Encaps CustomEncapsulation"
+outerConstructorName (Encaps (CustomEncapsulation _ _) _) = "Encaps CustomEncapsulation"
 outerConstructorName (Encaps ManualCSSClasses _) = "Encaps ManualCSSClasses"
 outerConstructorName (Encaps GriddedBlocks _) = "Encaps GriddedBlocks"
 outerConstructorName (Pure _) = "Pure"
@@ -494,7 +502,7 @@ instance Applicative (IPresentation m) where
   f <*> Pure x = fmap ($ x) f
   fs<*>xs = ap fs xs
 
-instance Monad (IPresentation m) where
+instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
   Resultless p >>= f = Dependent (Resultless p) f
@@ -511,6 +519,19 @@ instance Monad (IPresentation m) where
   Styling s (Dependent p g) >>= f = Dependent (Styling s p) $ Styling s . g >=> f
   Encaps (WithHeading h) p >>= f = Dependent (Encaps (WithHeading h) p) f
   Encaps ManualCSSClasses ps >>= f = Dependent (Encaps ManualCSSClasses ps) f
+  Encaps (CustomEncapsulation (EncapsulableWitness w') e') ps' >>= f'
+      = bindCustEncaps w' e' ps' f'
+   where bindCustEncaps :: ∀ a b t r
+                        . (Sessionable r, Traversable t, Sessionable (t ()))
+                        => (∀ r' . Sessionable r' => SessionableWitness (t r'))
+                        -> (t Html -> Html)
+                        -> t (IPresentation m r)
+                        -> (t r -> IPresentation m b)
+                        -> IPresentation m b
+         bindCustEncaps w e ps f
+          = case w :: SessionableWitness (t r) of
+             SessionableWitness
+               -> Dependent (Encaps (CustomEncapsulation (EncapsulableWitness w) e) ps) f
   Pure x >>= f = f x
   Deterministic g p >>= f = p >>= f . g
   Interactive p q >>= f = Dependent (Interactive p q) f
@@ -554,7 +575,8 @@ staticContent = fmap (const mempty) . StaticContent
 
 tweakContent :: Sessionable r => (Html -> Html) -> IPresentation m r -> IPresentation m r
 tweakContent f = fmap runIdentity
-               . Encaps (CustomEncapsulation $ f . runIdentity)
+               . Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
+                              $ f . runIdentity)
                . Identity
 
 infixr 6 $<>
@@ -730,7 +752,7 @@ changePos_State (PositionChange path isRevert) = do
              . Just <$> liftIO q
        go crumbs path (Encaps (WithHeading _) (Identity cont))
            = (,True) . fmap Identity . fst <$> go crumbs path cont
-       go crumbs path (Encaps (CustomEncapsulation _) cont)
+       go crumbs path (Encaps (CustomEncapsulation _ _) cont)
            = (,True) . sequence
               <$> traverse (\c -> fst <$> go crumbs path c) cont
        go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
