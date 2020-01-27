@@ -42,7 +42,7 @@ module Presentation.Yeamer ( Presentation
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            -- * CSS
-                           , divClass, spanClass, (#%), styling
+                           , divClass, spanClass, (#%), styling, Css
                            -- * Server configuration
                            , yeamer'
                            , YeamerServerConfig
