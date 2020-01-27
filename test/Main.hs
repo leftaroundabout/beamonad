@@ -8,8 +8,6 @@ import Text.Lucius
 import Text.Hamlet
 
 import Data.Foldable
-import Data.Semigroup
-import Data.Semigroup.Numbered
 import Data.String (fromString)
 import Data.Function (fix)
 

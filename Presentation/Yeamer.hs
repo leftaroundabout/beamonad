@@ -41,6 +41,8 @@ module Presentation.Yeamer ( Presentation
                            , verbatim, plaintext, verbatimWithin
                            -- * Structure / composition
                            , addHeading, (======), discardResult
+                           , module Data.Monoid
+                           , module Data.Semigroup.Numbered
                            -- * CSS
                            , divClass, spanClass, (#%), styling, Css
                            -- * Server configuration

@@ -6,9 +6,6 @@ import Presentation.Yeamer.Maths
 
 import Text.Cassius
 
-import Data.Semigroup
-import Data.Semigroup.Numbered
-
 import qualified Diagrams.Prelude as Dia
 import qualified Diagrams.Backend.Cairo as Dia
 
