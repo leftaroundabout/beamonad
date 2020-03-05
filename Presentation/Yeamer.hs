@@ -44,7 +44,7 @@ module Presentation.Yeamer ( Presentation
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
                            -- * CSS
-                           , divClass, spanClass, (#%), styling, Css
+                           , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration
                            , yeamer'
                            , YeamerServerConfig
@@ -559,6 +559,11 @@ divClass cn = fmap (fst . head . runWriterT)
 spanClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
 spanClass cn = fmap (fst . head . runWriterT)
               . Encaps ManualCSSClasses . WriterT . pure . (,HTMSpan cn)
+
+divClasses :: Sessionable r => [(Text, IPresentation m r)] -> IPresentation m r
+divClasses cns = fmap (fst . head . runWriterT)
+              . Encaps ManualCSSClasses $ WriterT [ (content,HTMDiv cn)
+                                                  | (cn,content) <- cns ]
 
 infix 8 #%
 -- | Assign this content a CSS class attribute. If the content is inline, this will
