@@ -357,10 +357,12 @@ getExactPositionR pPosition = do
                  $("#{rawJS newPath}").click(function(e){
                      if (e.ctrlKey && #{rawJS revertPossible}) {
                          isRevert = true;
-                         pChanger = "@{ChPosR pPosition (PositionChange previous True)}";
+                         pChanger =
+                          "@{ChPosR pPosition (PositionChange previous PositionRevert)}";
                      } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
                          isRevert = false;
-                         pChanger = "@{ChPosR pPosition (PositionChange next False)}";
+                         pChanger =
+                          "@{ChPosR pPosition (PositionChange next PositionAdvance)}";
                      } else {
                          return;
                      }
@@ -747,7 +749,7 @@ getChPosR oldPosition posStep = do
    toTextUrl $ ExactPositionR newPosition
 
 changePos_State :: PositionChange -> StateT PresProgress Handler ()
-changePos_State (PositionChange path isRevert) = do
+changePos_State (PositionChange path pChangeKind) = do
     PresentationServer presentation _ _ <- getYesod
     go ("", defaultChoiceName, "") (finePath <$> Txt.words path) presentation
     return ()
@@ -789,18 +791,18 @@ changePos_State (PositionChange path isRevert) = do
                 <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
        go (crumbh, choiceName, crumbp) path' (Dependent def opt) = do
           key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-          case (key, path', isRevert) of
+          case (key, path', pChangeKind) of
             (Just k, ('1':prog):path'', _) -> do
               (resKey, rHasContent)
                    <- go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
-              if isRevert && not rHasContent then do
+              if pChangeKind==PositionRevert && not rHasContent then do
                  revertProgress $ crumbh <> " span."<>choiceName crumbp
                  return (Nothing, False)
                else return (resKey, rHasContent)
             (Nothing, ('1':prog):path'', _) -> do
               (~(Just k), _) <- go' (crumbh, choiceName, crumbp<>"0") [] def
               go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
-            (_, [[]], False) -> do
+            (_, [[]], PositionAdvance) -> do
               (key', _) <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
               case key' of
                Just k -> do
@@ -808,14 +810,14 @@ changePos_State (PositionChange path isRevert) = do
                  skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
                  return (Nothing, True)
                Nothing -> error $ outerConstructorName def ++ " refuses to yield a result value."
-            (_, [[]], True) -> do
+            (_, [[]], PositionRevert) -> do
               revertProgress path
               lHasContent
                     <- hasDisplayableContent (crumbh, choiceName, crumbp<>"0") def
               return (Nothing, lHasContent)
-            (Just k, [], False)
+            (Just k, [], PositionAdvance)
              -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
-            (Nothing, [], False)
+            (Nothing, [], PositionAdvance)
              -> return (Nothing, False)
             (_, dir:_, _)
              -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."

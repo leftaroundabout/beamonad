@@ -70,9 +70,16 @@ disassemblePresProgress (PresProgress progs)
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
 
 
+data PositionChangeKind
+     = PositionAdvance
+     | PositionRevert
+  deriving (Generic, Eq, Show, Read)
+instance JSON.FromJSON PositionChangeKind
+instance Flat PositionChangeKind
+
 data PositionChange = PositionChange
     { posChangeLevel :: PrPath
-    , posChangeIsRevert :: Bool
+    , posChangeKind :: PositionChangeKind
     } deriving (Generic, Eq, Show, Read)
 instance JSON.FromJSON PositionChange
 
