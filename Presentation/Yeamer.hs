@@ -235,6 +235,9 @@ preprocPres (Encaps GriddedBlocks p)
        idc i
         | c <- toEnum $ fromEnum 'a' + i
         , c <= 'z'                        = Txt.singleton c
+        | c <- toEnum $ fromEnum '㐀' + i
+        , c <= '鿋'                       = Txt.singleton c
+        | otherwise                       = error "Too many grid cells to display."
        gridClass = "autogrid_"<>Txt.intercalate "-" (Txt.concat<$>gridRep)
        grids = [lucius|
                  div.#{gridClass} {
