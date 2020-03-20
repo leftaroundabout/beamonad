@@ -39,6 +39,8 @@ module Presentation.Yeamer ( Presentation
                            , useFile, useFileSupplier
                            -- ** Code / plaintext
                            , verbatim, plaintext, verbatimWithin
+                           -- ** Haskell values
+                           , InteractiveShow(..)
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            , module Data.Monoid
@@ -963,3 +965,24 @@ yeamer' (YeamerServerConfig port) presentation = do
 --   in a web browser, on port 14910. This is a shorthand for @'yeamer'' 'def'@.
 yeamer :: Presentation -> IO ()
 yeamer = yeamer' def
+
+
+
+
+class InteractiveShow a where
+  display :: a -> Presentation
+  displayList :: [a] -> Presentation
+  displayList = go 1
+   where go _ [] = "[]"
+         go n xs = case splitAt (sum [1..n]) xs of
+           (l,[]) -> "[" │ foldr1 ((│).(│",")) (display<$>l) │ "]"
+           (l,_) -> (foldr1 ((│).(│":")) (display<$>l) │ ":" │ "...")
+                      >>= \() -> go (n + 1) xs
+
+instance InteractiveShow Char where
+  display c = fromString $ show c
+  displayList s = fromString $ show s
+instance InteractiveShow Int where
+  display s = fromString $ show s
+instance InteractiveShow a => InteractiveShow [a] where
+  display = displayList
