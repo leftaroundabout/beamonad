@@ -968,21 +968,45 @@ yeamer = yeamer' def
 
 
 
+data DisplayOrientation = DisplayHorizontally | DisplayVertically
+  deriving (Eq, Show, Generic)
+otherDisplayOrientation :: DisplayOrientation -> DisplayOrientation
+otherDisplayOrientation DisplayHorizontally = DisplayVertically
+otherDisplayOrientation DisplayVertically = DisplayHorizontally
 
 class InteractiveShow a where
   display :: a -> Presentation
-  displayList :: [a] -> Presentation
-  displayList = go 1
+  display = displayOriented DisplayHorizontally
+  displayOriented :: DisplayOrientation -> a -> Presentation
+  displayList :: DisplayOrientation -> [a] -> Presentation
+  displayList orient = go 1
    where go _ [] = "[]"
          go n xs = case splitAt (sum [1..n]) xs of
-           (l,[]) -> "[" │ foldr1 ((│).(│",")) (display<$>l) │ "]"
-           (l,_) -> (foldr1 ((│).(│":")) (display<$>l) │ ":" │ "...")
+           (l₀:r@(_:_),[])
+               -> let m = init r; ω = last r
+                  in foldr1 catOp $ ["["│display' l₀│" "]
+                                 ++ map ((","│).(│" ").display') m
+                                 ++ [","│display' ω│"]"]
+           (l,[])
+               -> "[" │ foldr1 (│) (display'<$>l) │ "]"
+           (l₀:r@(_:_),_)
+               -> (let m = init r; ω = last r
+                   in foldr1 catOp $ ["("│display' l₀]
+                                  ++ map ((":"│).display') m
+                                  ++ [ ":"│display' ω
+                                     , ":"│"...)" ]
+                    ) >>= \() -> go (n + 1) xs
+           (l,_) -> "(" │ foldr1 (│) (display'<$>l) │ ":" │ "..." │ ")"
                       >>= \() -> go (n + 1) xs
+         catOp = case orient of
+          DisplayHorizontally -> (│)
+          DisplayVertically -> (──)
+         display' = displayOriented $ otherDisplayOrientation orient
 
 instance InteractiveShow Char where
-  display c = fromString $ show c
-  displayList s = fromString $ show s
+  displayOriented _ c = fromString $ show c
+  displayList _ s = fromString $ show s
 instance InteractiveShow Int where
-  display s = fromString $ show s
+  displayOriented _ s = fromString $ show s
 instance InteractiveShow a => InteractiveShow [a] where
-  display = displayList
+  displayOriented = displayList

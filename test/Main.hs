@@ -64,6 +64,9 @@ main = yeamer . styling ([lucius|
    "Lazy Haskell structures"
     ======
      display [0::Int .. 16]
+      ──
+     display [ [0..n]
+             | n <- [0::Int .. ] ]
 
    "Some maths"
     ======
