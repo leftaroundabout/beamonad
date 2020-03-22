@@ -1045,11 +1045,31 @@ instance (GInteractiveShow f, KnownSymbol n)
               => GInteractiveShow (M1 i ('MetaCons n φ σ) f) where
   gDisplayOriented orient (M1 x) = fromString (symbolVal @n Proxy)
                                      ── gDisplayOriented orient x
-instance GInteractiveShow f => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ δ) f) where
+instance GInteractiveShow f
+    => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ 'DecidedStrict) f) where
   gDisplayOriented orient (M1 x) = gDisplayOriented orient x
+instance GInteractiveShow f
+    => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ 'DecidedUnpack) f) where
+  gDisplayOriented orient (M1 x) = gDisplayOriented orient x
+instance GInteractiveShow f
+    => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ 'DecidedLazy) f) where
+  gDisplayOriented orient (M1 x) = "..." >>= \() -> gDisplayOriented orient x
 instance (GInteractiveShow f, KnownSymbol n)
-             => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ δ) f) where
+             => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedStrict) f) where
   gDisplayOriented orient (M1 x)
              = fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x
+   where (⊕) = case orient of DisplayHorizontally -> (──)
+                              DisplayVertically -> (│)
+instance (GInteractiveShow f, KnownSymbol n)
+             => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedUnpack) f) where
+  gDisplayOriented orient (M1 x)
+             = fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x
+   where (⊕) = case orient of DisplayHorizontally -> (──)
+                              DisplayVertically -> (│)
+instance (GInteractiveShow f, KnownSymbol n)
+             => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedLazy) f) where
+  gDisplayOriented orient (M1 x)
+    = (fromString (symbolVal @n Proxy ++ "=") ⊕ "...")
+       >>= \() -> (fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x)
    where (⊕) = case orient of DisplayHorizontally -> (──)
                               DisplayVertically -> (│)
