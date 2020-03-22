@@ -70,7 +70,7 @@ main = yeamer . styling ([lucius|
       ──
       display[ [0..n]
              | n <- [0::Int .. ] ]
-     display (RecordTest 1 "foo")
+     display (RecordTest 1 (Alt₁Test $ RecordTest 2 "foo"))
 
 
    "Some maths"
@@ -157,7 +157,12 @@ instance Flat UTCTime where
 
 
 
-data RecordDisplayTest = RecordTest { rtSel₀ :: Int, rtSel₁ :: String }
+data RecordDisplayTest a = RecordTest { rtSel₀ :: !Int, rtSel₁ :: a }
   deriving (Generic)
 
-instance InteractiveShow RecordDisplayTest
+data AlternativeDisplayTest = Alt₀Test
+                            | Alt₁Test (RecordDisplayTest String)
+  deriving (Generic)
+
+instance InteractiveShow a => InteractiveShow (RecordDisplayTest a)
+instance InteractiveShow AlternativeDisplayTest
