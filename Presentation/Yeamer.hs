@@ -20,8 +20,11 @@
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE DefaultSignatures      #-}
+{-# LANGUAGE EmptyCase              #-}
 {-# LANGUAGE UnicodeSyntax          #-}
 {-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE ViewPatterns           #-}
 {-# LANGUAGE Rank2Types             #-}
@@ -978,6 +981,9 @@ class InteractiveShow a where
   display :: a -> Presentation
   display = displayOriented DisplayHorizontally
   displayOriented :: DisplayOrientation -> a -> Presentation
+  default displayOriented :: (Generic a, GInteractiveShow (Rep a))
+              => DisplayOrientation -> a -> Presentation
+  displayOriented orient = gDisplayOriented orient . from
   displayList :: DisplayOrientation -> [a] -> Presentation
   displayList orient = go 1
    where go _ [] = "[]"
@@ -1003,6 +1009,9 @@ class InteractiveShow a where
           DisplayVertically -> (──)
          display' = displayOriented $ otherDisplayOrientation orient
 
+class GInteractiveShow f where
+  gDisplayOriented :: DisplayOrientation -> f p -> Presentation
+
 instance InteractiveShow Char where
   displayOriented _ c = fromString $ show c
   displayList _ s = fromString $ show s
@@ -1010,3 +1019,22 @@ instance InteractiveShow Int where
   displayOriented _ s = fromString $ show s
 instance InteractiveShow a => InteractiveShow [a] where
   displayOriented = displayList
+
+
+instance GInteractiveShow V1 where
+  gDisplayOriented _ a = case a of {}
+instance GInteractiveShow U1 where
+  gDisplayOriented _ _ = mempty
+instance (GInteractiveShow l, GInteractiveShow r) => GInteractiveShow (l:+:r) where
+  gDisplayOriented orient (L1 x) = gDisplayOriented orient x
+  gDisplayOriented orient (R1 y) = gDisplayOriented orient y
+instance (GInteractiveShow l, GInteractiveShow r) => GInteractiveShow (l:*:r) where
+  gDisplayOriented orient (x:*:y)
+    = case orient of
+       DisplayHorizontally -> gDisplayOriented orient x │ gDisplayOriented orient y
+       DisplayVertically -> gDisplayOriented orient x ── gDisplayOriented orient y
+instance InteractiveShow a => GInteractiveShow (K1 i a) where
+  gDisplayOriented orient (K1 x)
+        = displayOriented (otherDisplayOrientation orient) x
+instance GInteractiveShow f => GInteractiveShow (M1 i m f) where
+  gDisplayOriented orient (M1 x) = gDisplayOriented orient x

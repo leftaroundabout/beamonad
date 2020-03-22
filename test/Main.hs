@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE DeriveGeneric     #-}
 
 import Presentation.Yeamer
 import Presentation.Yeamer.Maths
@@ -20,6 +21,8 @@ import qualified Diagrams.Prelude as Dia
 import qualified Diagrams.Backend.Cairo as Dia
 
 import Data.Function
+
+import GHC.Generics
 
 main :: IO ()
 main = yeamer . styling ([lucius|
@@ -62,11 +65,13 @@ main = yeamer . styling ([lucius|
           |]
    
    "Lazy Haskell structures"
-    ======
+    ====== do
      display [0::Int .. 16]
       ──
-     display [ [0..n]
+      display[ [0..n]
              | n <- [0::Int .. ] ]
+     display (RecordTest 1 "foo")
+
 
    "Some maths"
     ======
@@ -149,3 +154,10 @@ instance Flat UTCTime where
   decode = fmap (posixSecondsToUTCTime . realToFrac . (id::Double->Double)) decode
   encode = encode . (id::Double->Double) . realToFrac . utcTimeToPOSIXSeconds
   size = size . (id::Double->Double) . realToFrac . utcTimeToPOSIXSeconds
+
+
+
+data RecordDisplayTest = RecordTest { rtSel₀ :: Int, rtSel₁ :: String }
+  deriving (Generic)
+
+instance InteractiveShow RecordDisplayTest
