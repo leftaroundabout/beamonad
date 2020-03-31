@@ -82,7 +82,7 @@ import qualified Data.Map as Map
 import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
 
-import Text.Cassius (Css)
+import Text.Cassius (cassius, Css)
 import Text.Julius (rawJS)
 
 import Yesod.Static (Static, static, base64md5)
@@ -1049,9 +1049,15 @@ instance KnownSymbol n
   gDisplayOriented orient (M1 x) = dispConstructorLabel @n
 instance (GInteractiveShow f, GInteractiveShow g, KnownSymbol n)
               => GInteractiveShow (M1 i ('MetaCons n φ σ) (f:*:g)) where
-  gDisplayOriented orient (M1 x) = dispConstructorLabel @n
-                              ── divClass ("yeamer-display-dataFields-"<>rfOrient)
-                                         (gDisplayOriented orient x)
+  gDisplayOriented orient (M1 x) = styling ([cassius|
+                  .yeamer-display-dataFields-vert>.autogrid>div
+                    border-top: 1px dashed
+                  .yeamer-display-dataFields-horiz>.autogrid>div
+                    border-left: 1px dashed
+                                             |]())
+          $ dispConstructorLabel @n
+              ── divClass ("yeamer-display-dataFields-"<>rfOrient)
+                     (gDisplayOriented orient x)
    where rfOrient = case orient of DisplayHorizontally -> "horiz"
                                    DisplayVertically -> "vert"
 instance (GInteractiveShow (M1 j μ f), KnownSymbol n)

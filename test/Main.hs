@@ -59,12 +59,6 @@ main = yeamer . styling ([lucius|
                     font-weight: bold;
                     background-color: #222;
                   }
-                  .yeamer-display-dataFields-vert>.autogrid>div {
-                    border-bottom: 1px dashed white;
-                  }
-                  .yeamer-display-dataFields-horiz>.autogrid>div {
-                    border-right: 1px dashed white;
-                  }
                   .yeamer-display-recordFieldLabel {
                     text-align: left;
                     font-size: 70%;
