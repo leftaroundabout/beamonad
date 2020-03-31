@@ -1044,10 +1044,24 @@ instance InteractiveShow a => GInteractiveShow (K1 i a) where
 
 instance GInteractiveShow f => GInteractiveShow (M1 i ('MetaData ν μ π τ) f) where
   gDisplayOriented orient (M1 x) = dispDataEncapsulated $ gDisplayOriented orient x
-instance (GInteractiveShow f, KnownSymbol n)
-              => GInteractiveShow (M1 i ('MetaCons n φ σ) f) where
+instance KnownSymbol n
+              => GInteractiveShow (M1 i ('MetaCons n φ σ) U1) where
   gDisplayOriented orient (M1 x) = dispConstructorLabel @n
-                                     ── gDisplayOriented orient x
+instance (GInteractiveShow f, GInteractiveShow g, KnownSymbol n)
+              => GInteractiveShow (M1 i ('MetaCons n φ σ) (f:*:g)) where
+  gDisplayOriented orient (M1 x) = dispConstructorLabel @n
+                              ── divClass ("yeamer-display-dataFields-"<>rfOrient)
+                                         (gDisplayOriented orient x)
+   where rfOrient = case orient of DisplayHorizontally -> "horiz"
+                                   DisplayVertically -> "vert"
+instance (GInteractiveShow (M1 j μ f), KnownSymbol n)
+              => GInteractiveShow (M1 i ('MetaCons n φ σ)
+                                        (M1 j μ f)) where
+  gDisplayOriented orient (M1 x) = dispConstructorLabel @n
+                    ── gDisplayOriented (otherDisplayOrientation orient
+                                          -- single-field cons: undo K1 direction-change
+                                        ) x
+
 instance GInteractiveShow f
     => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ 'DecidedStrict) f) where
   gDisplayOriented orient (M1 x) = gDisplayOriented orient x

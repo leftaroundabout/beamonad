@@ -59,6 +59,12 @@ main = yeamer . styling ([lucius|
                     font-weight: bold;
                     background-color: #222;
                   }
+                  .yeamer-display-dataFields-vert>.autogrid>div {
+                    border-bottom: 1px dashed white;
+                  }
+                  .yeamer-display-dataFields-horiz>.autogrid>div {
+                    border-right: 1px dashed white;
+                  }
                   .yeamer-display-recordFieldLabel {
                     text-align: left;
                     font-size: 70%;
@@ -86,8 +92,8 @@ main = yeamer . styling ([lucius|
       ──
       display[ [0..n]
              | n <- [0::Int .. ] ]
-     display [ RecordTest 1 [Alt₀Test, Alt₀Test]
-             , RecordTest 1 [Alt₀Test, Alt₁Test $ RecordTest 2 ["foo","bar"]] ]
+     display [ RecordTest 1 Alt₀Test
+             , RecordTest 1 (Alt₁Test $ RecordTest 2 ["foo","bar"]) ]
 
 
    "Some maths"
