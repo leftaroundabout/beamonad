@@ -29,6 +29,7 @@
 {-# LANGUAGE ViewPatterns           #-}
 {-# LANGUAGE Rank2Types             #-}
 {-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 
 module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
@@ -1042,10 +1043,10 @@ instance InteractiveShow a => GInteractiveShow (K1 i a) where
         = displayOriented (otherDisplayOrientation orient) x
 
 instance GInteractiveShow f => GInteractiveShow (M1 i ('MetaData ν μ π τ) f) where
-  gDisplayOriented orient (M1 x) = gDisplayOriented orient x
+  gDisplayOriented orient (M1 x) = dispDataEncapsulated $ gDisplayOriented orient x
 instance (GInteractiveShow f, KnownSymbol n)
               => GInteractiveShow (M1 i ('MetaCons n φ σ) f) where
-  gDisplayOriented orient (M1 x) = fromString (symbolVal @n Proxy)
+  gDisplayOriented orient (M1 x) = dispConstructorLabel @n
                                      ── gDisplayOriented orient x
 instance GInteractiveShow f
     => GInteractiveShow (M1 i ('MetaSel 'Nothing υ σ 'DecidedStrict) f) where
@@ -1059,19 +1060,30 @@ instance GInteractiveShow f
 instance (GInteractiveShow f, KnownSymbol n)
              => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedStrict) f) where
   gDisplayOriented orient (M1 x)
-             = fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x
+             = dispRecFieldLabel @n ⊕ gDisplayOriented orient x
    where (⊕) = case orient of DisplayHorizontally -> (──)
                               DisplayVertically -> (│)
 instance (GInteractiveShow f, KnownSymbol n)
              => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedUnpack) f) where
   gDisplayOriented orient (M1 x)
-             = fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x
+             = dispRecFieldLabel @n ⊕ gDisplayOriented orient x
    where (⊕) = case orient of DisplayHorizontally -> (──)
                               DisplayVertically -> (│)
 instance (GInteractiveShow f, KnownSymbol n)
              => GInteractiveShow (M1 i ('MetaSel ('Just n) υ σ 'DecidedLazy) f) where
   gDisplayOriented orient (M1 x)
-    = (fromString (symbolVal @n Proxy ++ "=") ⊕ "...")
-       >>= \() -> (fromString (symbolVal @n Proxy ++ "=") ⊕ gDisplayOriented orient x)
+    = (dispRecFieldLabel @n ⊕ "...")
+       >>= \() -> (dispRecFieldLabel @n ⊕ gDisplayOriented orient x)
    where (⊕) = case orient of DisplayHorizontally -> (──)
                               DisplayVertically -> (│)
+
+dispDataEncapsulated :: Presentation -> Presentation
+dispDataEncapsulated = divClass "yeamer-display-dataEncapsulation"
+
+dispConstructorLabel :: ∀ n . KnownSymbol n => Presentation
+dispConstructorLabel = divClass "yeamer-display-dataConstructorName"
+                      $ fromString (symbolVal @n Proxy)
+
+dispRecFieldLabel :: ∀ n . KnownSymbol n => Presentation
+dispRecFieldLabel = divClass "yeamer-display-recordFieldLabel"
+                      $ fromString (symbolVal @n Proxy ++ "=")

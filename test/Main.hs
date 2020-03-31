@@ -48,6 +48,22 @@ main = yeamer . styling ([lucius|
                     display: flex;
                     flex-direction: column;
                   }
+                  .yeamer-display-dataEncapsulation {
+                    border: 1px solid white;
+                    border-radius: 15px;
+                    overflow: hidden;
+                    width: 90%;
+                    height: 90%;
+                  }
+                  .yeamer-display-dataConstructorName {
+                    font-weight: bold;
+                    background-color: #222;
+                  }
+                  .yeamer-display-recordFieldLabel {
+                    text-align: left;
+                    font-size: 70%;
+                    max-height: 1em;
+                  }
                  |] ()) $ do
 
 
@@ -70,7 +86,8 @@ main = yeamer . styling ([lucius|
       ──
       display[ [0..n]
              | n <- [0::Int .. ] ]
-     display (RecordTest 1 (Alt₁Test $ RecordTest 2 "foo"))
+     display [ RecordTest 1 [Alt₀Test, Alt₀Test]
+             , RecordTest 1 [Alt₀Test, Alt₁Test $ RecordTest 2 ["foo","bar"]] ]
 
 
    "Some maths"
@@ -161,7 +178,7 @@ data RecordDisplayTest a = RecordTest { rtSel₀ :: !Int, rtSel₁ :: a }
   deriving (Generic)
 
 data AlternativeDisplayTest = Alt₀Test
-                            | Alt₁Test (RecordDisplayTest String)
+                            | Alt₁Test (RecordDisplayTest [String])
   deriving (Generic)
 
 instance InteractiveShow a => InteractiveShow (RecordDisplayTest a)
