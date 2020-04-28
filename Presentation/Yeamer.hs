@@ -112,6 +112,7 @@ import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
 import Data.These
 import Data.These.Lens
+import Data.Either (partitionEithers)
 import qualified Data.Semigroup as SG
 import Data.Semigroup.Numbered
 import Data.Monoid
@@ -179,8 +180,9 @@ data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
-   Encaps :: (Traversable t, Sessionable r, Sessionable (t ()))
-               => Container t -> t (IPresentation m r) -> IPresentation m (t r)
+   Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
+               => Container t -> (t r -> rf)
+                   -> t (IPresentation m r) -> IPresentation m rf
    Pure :: r -> IPresentation m r
    Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
    Interactive :: Sessionable r
@@ -220,16 +222,16 @@ preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
-preprocPres (Encaps (WithHeading h) p) = Encaps (WithHeading h) $ preprocPres<$>p
-preprocPres (Encaps ManualCSSClasses p) = Encaps ManualCSSClasses $ preprocPres<$>p
-preprocPres (Encaps (CustomEncapsulation (EncapsulableWitness w) f) p)
-                = Encaps (CustomEncapsulation (EncapsulableWitness w) f) $ preprocPres<$>p
-preprocPres (Encaps GriddedBlocks p)
+preprocPres (Encaps (WithHeading h) ff p) = Encaps (WithHeading h) ff $ preprocPres<$>p
+preprocPres (Encaps ManualCSSClasses ff p) = Encaps ManualCSSClasses ff $ preprocPres<$>p
+preprocPres (Encaps (CustomEncapsulation (EncapsulableWitness w) f) ff p)
+                = Encaps (CustomEncapsulation (EncapsulableWitness w) f) ff $ preprocPres<$>p
+preprocPres (Encaps GriddedBlocks ff p)
            = Styling grids
+           . fmap ff
            . divClass gridClass
-           . fmap (backonstruct . map (first (read . Txt.unpack . _hchunkCSSClass) . swap)
+           . Encaps ManualCSSClasses (backonstruct . map (first (read . Txt.unpack . _hchunkCSSClass) . swap)
                       . runWriterT)
-           . Encaps ManualCSSClasses
            $ preprocPres <$> layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p
        layouted = WriterT $ swap . first (HTMDiv . ("autogrid-range_"<>) . idc)
@@ -271,10 +273,10 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
-isInline (Encaps ManualCSSClasses (WriterT qs)) = all (\(_,i) -> case i of
+isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
                    HTMDiv _ -> False ) qs
-isInline (Encaps _ _) = False
+isInline (Encaps _ _ _) = False
 isInline (Styling _ q) = isInline q
 isInline (Interactive q _) = isInline q
 isInline (Resultless q) = isInline q
@@ -307,13 +309,13 @@ getExactPositionR pPosition = do
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
-       chooseSlide path choiceName "" Nothing Nothing (Encaps f conts)
+       chooseSlide path choiceName "" Nothing Nothing (Encaps f ff conts)
                   = postGather <$> cellwise f
         where postGather sq = case sequence sq of
-               That p's -> That p's
-               This _   -> This . discardResult $ Encaps f
+               That p's -> That $ ff p's
+               This _   -> This $ Encaps f (const())
                                 $ fmap (maybe mempty id . (^?here)) sq
-               These _ p's -> (`These`p's) . discardResult $ Encaps f
+               These _ p's -> (`These`ff p's) $ Encaps f (const())
                                 $ fmap (maybe mempty id . (^?here)) sq
               cellwise ManualCSSClasses
                 | WriterT contsL <- conts
@@ -410,26 +412,26 @@ getExactPositionR pPosition = do
        go lvl (Resultless conts) = go lvl conts
        go lvl (Interactive conts _) = go lvl conts
        go lvl (Styling sty conts) = go lvl conts
-       go lvl (Encaps (WithHeading h) conts)
+       go lvl (Encaps (WithHeading h) ff conts)
            = let lvl' = min 6 $ lvl + 1
                  hh = [HTM.h1, HTM.h2, HTM.h3, HTM.h4, HTM.h5, HTM.h6]!!lvl
              in go lvl' $ Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
                                          $ \(Identity contsr)
                                     -> HTM.div HTM.! HTM.class_ "headed-container"
                                          $ hh h <> contsr
-                                 ) conts
-       go lvl (Encaps ManualCSSClasses conts)
+                                 ) ff conts
+       go lvl (Encaps ManualCSSClasses ff conts)
            = go lvl $ Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness) $ \(WriterT contsrs)
                   -> foldMap (\(q,i) -> case i of
                                HTMDiv c -> [hamlet| <div class=#{withSupclass c}> #{q} |]()
                                HTMSpan c -> [hamlet| <span class=#{withSupclass c}> #{q} |]())
                       $ contsrs
-                 ) conts
+                 ) ff conts
         where withSupclass c
                | Just _ <- Txt.stripPrefix "autogrid_" c
                             = "autogrid "<>c
                | otherwise  = c
-       go lvl (Encaps (CustomEncapsulation (EncapsulableWitness _) f) conts) = f $ go lvl <$> conts
+       go lvl (Encaps (CustomEncapsulation (EncapsulableWitness _) f) _ conts) = f $ go lvl <$> conts
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
@@ -444,59 +446,63 @@ hchunkFor t p | isInline p  = HTMSpan t
 
 instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
-  Encaps ManualCSSClasses (WriterT elems₀) <> Encaps ManualCSSClasses (WriterT elems₁)
-     = Encaps ManualCSSClasses . WriterT . disambiguate $ elems₀ ++ elems₁
+  Encaps ManualCSSClasses ff₀ (WriterT elems₀) <> Encaps ManualCSSClasses ff₁ (WriterT elems₁)
+     = Encaps ManualCSSClasses ff' . WriterT . disambiguate
+           $ map (first $ fmap Left) elems₀ ++ map (first $ fmap Right) elems₁
    where disambiguate = go 0 Map.empty
           where go _ _ [] = []
                 go i occupied ((q,c):qs)
                  | Txt.null (_hchunkCSSClass c) || c`Map.member`occupied
                     = let c' = c & hchunkCSSClass .~ Txt.pack ("anonymousCell-"++show i)
-                      in go (i+1) occupied (( fmap (fst . head . runWriterT)
-                                             . Encaps ManualCSSClasses $ WriterT [(q,c)]
+                      in go (i+1) occupied (( Encaps ManualCSSClasses (fst . head . runWriterT) $ WriterT [(q,c)]
                                             , c' ):qs)
                  | otherwise
                     = (q,c) : go (i+1) (Map.insert c () occupied) qs
-  Resultless (Encaps ManualCSSClasses ps) <> Resultless (Encaps ManualCSSClasses qs)
-      = Resultless $ Encaps ManualCSSClasses (discardResult<$>ps)
-               SG.<> Encaps ManualCSSClasses (discardResult<$>qs)
-  Resultless p@(Encaps ManualCSSClasses _) <> c
-      = Resultless p <> Resultless (Encaps ManualCSSClasses $ WriterT [(c,hchunkFor""c)])
-  c <> Resultless p@(Encaps ManualCSSClasses _)
-      = Resultless (Encaps ManualCSSClasses $ WriterT [(c,hchunkFor""c)]) <> Resultless p
-  p <> q = fmap fold . Encaps ManualCSSClasses $ WriterT
+         ff' (WriterT l) = case partitionEithers
+                             $ map ( \(d,r)->case d of Left d'->Left (d',r)
+                                                       Right d'->Right (d',r) ) l of
+                  (l₀,l₁) -> ff₀ (WriterT l₀)<>ff₁ (WriterT l₁)
+  Resultless (Encaps ManualCSSClasses _ ps) <> Resultless (Encaps ManualCSSClasses _ qs)
+      = Resultless $ Encaps ManualCSSClasses id (discardResult<$>ps)
+               SG.<> Encaps ManualCSSClasses id (discardResult<$>qs)
+  Resultless p@(Encaps ManualCSSClasses _ _) <> c
+      = Resultless p <> Resultless (Encaps ManualCSSClasses id $ WriterT [(c,hchunkFor""c)])
+  c <> Resultless p@(Encaps ManualCSSClasses _ _)
+      = Resultless (Encaps ManualCSSClasses id $ WriterT [(c,hchunkFor""c)]) <> Resultless p
+  p <> q = Encaps ManualCSSClasses fold $ WriterT
              [(p, hchunkFor"anonymousCell-0"p), (q, hchunkFor"anonymousCell-1"q)]
 instance ∀ m . Monoid (IPresentation m ()) where
   mappend = (SG.<>)
-  mempty = Resultless $ Encaps ManualCSSClasses
+  mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
-  sappendN _ (Resultless (Encaps GriddedBlocks l))
-             (Resultless (Encaps GriddedBlocks r))
-           = Resultless . Encaps GriddedBlocks $ (discardResult<$>l) │ (discardResult<$>r)
-  sappendN _ l@(Resultless (Encaps GriddedBlocks _)) r
-           = l │ Resultless (Encaps GriddedBlocks $ pure r)
+  sappendN _ (Resultless (Encaps GriddedBlocks _ l))
+             (Resultless (Encaps GriddedBlocks _ r))
+           = Resultless . Encaps GriddedBlocks id $ (discardResult<$>l) │ (discardResult<$>r)
+  sappendN _ l@(Resultless (Encaps GriddedBlocks _ _)) r
+           = l │ Resultless (Encaps GriddedBlocks id $ pure r)
   sappendN _ l r
-           = Resultless (Encaps GriddedBlocks $ pure l) │ r
+           = Resultless (Encaps GriddedBlocks id $ pure l) │ r
 
 instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
-  sappendN _ (Resultless (Encaps GriddedBlocks t))
-             (Resultless (Encaps GriddedBlocks b))
-           = Resultless . Encaps GriddedBlocks $ (discardResult<$>t) ── (discardResult<$>b)
-  sappendN _ t@(Resultless (Encaps GriddedBlocks _)) b
-           = t ── Resultless (Encaps GriddedBlocks $ pure b)
+  sappendN _ (Resultless (Encaps GriddedBlocks _ t))
+             (Resultless (Encaps GriddedBlocks _ b))
+           = Resultless . Encaps GriddedBlocks id $ (discardResult<$>t) ── (discardResult<$>b)
+  sappendN _ t@(Resultless (Encaps GriddedBlocks _ _)) b
+           = t ── Resultless (Encaps GriddedBlocks id $ pure b)
   sappendN _ t b
-           = Resultless (Encaps GriddedBlocks $ pure t) ── b
+           = Resultless (Encaps GriddedBlocks id $ pure t) ── b
 
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
-outerConstructorName (Encaps (WithHeading _) _) = "Encaps WithHeading"
-outerConstructorName (Encaps (CustomEncapsulation _ _) _) = "Encaps CustomEncapsulation"
-outerConstructorName (Encaps ManualCSSClasses _) = "Encaps ManualCSSClasses"
-outerConstructorName (Encaps GriddedBlocks _) = "Encaps GriddedBlocks"
+outerConstructorName (Encaps (WithHeading _) _ _) = "Encaps WithHeading"
+outerConstructorName (Encaps (CustomEncapsulation _ _) _ _) = "Encaps CustomEncapsulation"
+outerConstructorName (Encaps ManualCSSClasses _ _) = "Encaps ManualCSSClasses"
+outerConstructorName (Encaps GriddedBlocks _ _) = "Encaps GriddedBlocks"
 outerConstructorName (Pure _) = "Pure"
 outerConstructorName (Deterministic _ _) = "Deterministic"
 outerConstructorName (Interactive _ _) = "Interactive"
@@ -528,28 +534,29 @@ instance ∀ m . Monad (IPresentation m) where
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
   Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
   Styling s (Styling s' x) >>= f = Styling (s++s') x >>= f
-  Styling s (Encaps (WithHeading h) x) >>= f
-      = Dependent (Styling s (Encaps (WithHeading h) x)) f
-  Styling s (Encaps ManualCSSClasses x) >>= f
-      = Dependent (Styling s (Encaps ManualCSSClasses x)) f
+  Styling s (Encaps (WithHeading h) ff x) >>= f
+      = Dependent (Styling s (Encaps (WithHeading h) ff x)) f
+  Styling s (Encaps ManualCSSClasses ff x) >>= f
+      = Dependent (Styling s (Encaps ManualCSSClasses ff x)) f
   Styling s (Deterministic g x) >>= f = Styling s x >>= f . g
   Styling s (Interactive p o) >>= f = Dependent (Interactive (Styling s p) o) f
   Styling s (Dependent p g) >>= f = Dependent (Styling s p) $ Styling s . g >=> f
-  Encaps (WithHeading h) p >>= f = Dependent (Encaps (WithHeading h) p) f
-  Encaps ManualCSSClasses ps >>= f = Dependent (Encaps ManualCSSClasses ps) f
-  Encaps (CustomEncapsulation (EncapsulableWitness w') e') ps' >>= f'
-      = bindCustEncaps w' e' ps' f'
-   where bindCustEncaps :: ∀ a b t r
-                        . (Sessionable r, Traversable t, Sessionable (t ()))
-                        => (∀ r' . Sessionable r' => SessionableWitness (t r'))
-                        -> (t Html -> Html)
-                        -> t (IPresentation m r)
-                        -> (t r -> IPresentation m b)
-                        -> IPresentation m b
-         bindCustEncaps w e ps f
+  Encaps (WithHeading h) ff p >>= f = Dependent (Encaps (WithHeading h) ff p) f
+  Encaps ManualCSSClasses ff ps >>= f = Dependent (Encaps ManualCSSClasses ff ps) f
+  Encaps (CustomEncapsulation (EncapsulableWitness w') e') ff' ps' >>= f'
+      = bindCustEncaps w' e' ff' ps' f'
+   where bindCustEncaps :: ∀ a b t r tr
+                   . (Sessionable r, Sessionable tr, Traversable t, Sessionable (t ()))
+                   => (∀ r' . Sessionable r' => SessionableWitness (t r'))
+                   -> (t Html -> Html)
+                   -> (t r -> tr)
+                   -> t (IPresentation m r)
+                   -> (tr -> IPresentation m b)
+                   -> IPresentation m b
+         bindCustEncaps w e ff ps f
           = case w :: SessionableWitness (t r) of
              SessionableWitness
-               -> Dependent (Encaps (CustomEncapsulation (EncapsulableWitness w) e) ps) f
+               -> Dependent (Encaps (CustomEncapsulation (EncapsulableWitness w) e) ff ps) f
   Pure x >>= f = f x
   Deterministic g p >>= f = p >>= f . g
   Interactive p q >>= f = Dependent (Interactive p q) f
@@ -566,19 +573,16 @@ infixr 6 ======
 (======) = addHeading
 
 addHeading :: Sessionable r => Html -> IPresentation m r -> IPresentation m r
-addHeading h = fmap runIdentity . Encaps (WithHeading h) . Identity
+addHeading h = Encaps (WithHeading h) runIdentity . Identity
 
 divClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-divClass cn = fmap (fst . head . runWriterT)
-              . Encaps ManualCSSClasses . WriterT . pure . (,HTMDiv cn)
+divClass cn = Encaps ManualCSSClasses (fst . head . runWriterT) . WriterT . pure . (,HTMDiv cn)
 
 spanClass :: Sessionable r => Text -> IPresentation m r -> IPresentation m r
-spanClass cn = fmap (fst . head . runWriterT)
-              . Encaps ManualCSSClasses . WriterT . pure . (,HTMSpan cn)
+spanClass cn = Encaps ManualCSSClasses (fst . head . runWriterT) . WriterT . pure . (,HTMSpan cn)
 
 divClasses :: Sessionable r => [(Text, IPresentation m r)] -> IPresentation m r
-divClasses cns = fmap (fst . head . runWriterT)
-              . Encaps ManualCSSClasses $ WriterT [ (content,HTMDiv cn)
+divClasses cns = Encaps ManualCSSClasses (fst . head . runWriterT) $ WriterT [ (content,HTMDiv cn)
                                                   | (cn,content) <- cns ]
 
 infix 8 #%
@@ -597,9 +601,8 @@ staticContent :: Monoid r => Html -> IPresentation m r
 staticContent = fmap (const mempty) . StaticContent
 
 tweakContent :: Sessionable r => (Html -> Html) -> IPresentation m r -> IPresentation m r
-tweakContent f = fmap runIdentity
-               . Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
-                              $ f . runIdentity)
+tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
+                              $ f . runIdentity) runIdentity
                . Identity
 
 infixr 6 $<>
@@ -773,13 +776,13 @@ changePos_State (PositionChange path pChangeKind) = do
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
              . Just <$> liftIO q
-       go crumbs path (Encaps (WithHeading _) (Identity cont))
-           = (,True) . fmap Identity . fst <$> go crumbs path cont
-       go crumbs path (Encaps (CustomEncapsulation _ _) cont)
-           = (,True) . sequence
+       go crumbs path (Encaps (WithHeading _) ff (Identity cont))
+           = (,True) . fmap (ff . Identity) . fst <$> go crumbs path cont
+       go crumbs path (Encaps (CustomEncapsulation _ _) ff cont)
+           = (,True) . fmap ff . sequence
               <$> traverse (\c -> fst <$> go crumbs path c) cont
-       go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses (WriterT conts))
-           = (,True) . sequence . WriterT <$> traverse
+       go (crumbh,choiceName,crumbp) [] (Encaps ManualCSSClasses ff (WriterT conts))
+           = (,True) . fmap ff . sequence . WriterT <$> traverse
                 (\(c,ζ) -> (,ζ) . fst <$> go (crumbh<>case ζ of
                                               HTMDiv i -> " div."<>i
                                               HTMSpan i -> " span."<>i
@@ -825,11 +828,11 @@ changePos_State (PositionChange path pChangeKind) = do
             (_, dir:_, _)
              -> error $ "Div-ID "++dir++" not suitable for making a Dependent choice."
        go crumbs path (Styling _ cont) = go crumbs path cont
-       go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses (WriterT conts))
+       go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses ff (WriterT conts))
          | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
                        <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
          , Just subSel <- lookup dividt $ swap<$>conts
-              = first (fmap $ WriterT . pure . (,dividt))
+              = first (fmap $ ff . WriterT . pure . (,dividt))
                   <$> go (crumbh<>case dividt of
                                  HTMDiv i -> " div."<>i
                                  HTMSpan i -> " span."<>i
@@ -877,7 +880,7 @@ changePos_State (PositionChange path pChangeKind) = do
        skipContentless crumbs (Deterministic f c)
            = fmap f <$> skipContentless crumbs c
        skipContentless _ (StaticContent _) = return Nothing
-       skipContentless _ (Encaps _ _) = return Nothing
+       skipContentless _ (Encaps _ _ _) = return Nothing
        skipContentless _ p = error
         $ "`skipContentless` does not support "++outerConstructorName p
 
@@ -899,7 +902,7 @@ changePos_State (PositionChange path pChangeKind) = do
        hasDisplayableContent crumbs (Deterministic f c)
            = hasDisplayableContent crumbs c
        hasDisplayableContent _ (StaticContent _) = return True
-       hasDisplayableContent _ (Encaps _ _) = return True
+       hasDisplayableContent _ (Encaps _ _ _) = return True
        hasDisplayableContent _ p = error
         $ "`hasDisplayableContent` does not support "++outerConstructorName p
 
