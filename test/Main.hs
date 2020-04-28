@@ -59,6 +59,11 @@ main = yeamer . styling ([lucius|
                     font-weight: bold;
                     background-color: #222;
                   }
+                  .yeamer-display-dataConstructorName
+                     , .yeamer-display-dataFields-vert
+                     , .yeamer-display-dataFields-horiz {
+                    height: max-content;
+                  }
                   .yeamer-display-recordFieldLabel {
                     text-align: left;
                     font-size: 70%;

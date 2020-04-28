@@ -1074,7 +1074,7 @@ instance (GInteractiveShow f, GInteractiveShow g, KnownSymbol n)
                     border-left: 1px dashed
                                              |]())
           $ dispConstructorLabel @n
-              ── divClass ("yeamer-display-dataFields-"<>rfOrient)
+              <> divClass ("yeamer-display-dataFields-"<>rfOrient)
                      (gDisplayOriented orient x)
    where rfOrient = case orient of DisplayHorizontally -> "horiz"
                                    DisplayVertically -> "vert"
