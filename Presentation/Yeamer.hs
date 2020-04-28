@@ -91,6 +91,7 @@ import qualified Language.Javascript.JQuery as JQuery
 import Language.Haskell.TH.Syntax ( Exp(LitE, AppE, VarE, ConE)
                                   , Lit(StringL), Name, runIO )
 import GHC.TypeLits (KnownSymbol, symbolVal)
+import Data.Int (Int64, Int32, Int16)
 import Language.Haskell.TH.Quote
 
 import qualified CAS.Dumb.Symbols as TMM
@@ -100,6 +101,7 @@ import Text.LaTeX (LaTeX)
 import qualified Text.LaTeX as LaTeX
 import qualified Text.TeXMath as MathML
 import qualified Text.XML.Light as XML
+import Text.Printf
 
 import Data.List (intercalate)
 import Data.Foldable (fold)
@@ -1021,8 +1023,21 @@ class GInteractiveShow f where
 instance InteractiveShow Char where
   displayOriented _ c = fromString $ show c
   displayList _ s = fromString $ show s
-instance InteractiveShow Int where
-  displayOriented _ s = fromString $ show s
+instance InteractiveShow Int where displayOriented _ s = fromString $ show s
+instance InteractiveShow Int64 where displayOriented _ s = fromString $ show s
+instance InteractiveShow Int32 where displayOriented _ s = fromString $ show s
+instance InteractiveShow Int16 where displayOriented _ s = fromString $ show s
+instance InteractiveShow Double where
+  displayOriented _ x
+    | fromIntegral rounded == x   = display rounded
+    | read imprecise == x         = fromString imprecise
+    | otherwise = do
+        approxShw
+        fromString $ show x
+   where rounded = round x :: Int16
+         imprecise = printf "%.1g" x
+         approxShw = case break (=='e') imprecise of
+           (man,ex) -> fromString $ man ++ "…" ++ ex
 instance InteractiveShow a => InteractiveShow [a] where
   displayOriented = displayList
 
