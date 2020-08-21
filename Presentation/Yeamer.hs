@@ -178,6 +178,7 @@ makeLenses ''HTMChunkK
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
+   TweakableInput :: Sessionable x => (PrPath -> Html) -> IPresentation m x
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
@@ -220,6 +221,7 @@ instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
+preprocPres (TweakableInput frm) = TweakableInput frm
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) ff p) = Encaps (WithHeading h) ff $ preprocPres<$>p
@@ -273,6 +275,7 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
+isInline (TweakableInput _) = False
 isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
                    HTMDiv _ -> False ) qs
@@ -306,6 +309,8 @@ getExactPositionR pPosition = do
                             (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
+       chooseSlide path _ "" Nothing Nothing (TweakableInput frm)
+           = pure . This . StaticContent $ frm path
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
@@ -497,6 +502,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
+outerConstructorName (TweakableInput _) = "TweakableInput"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _ _) = "Encaps WithHeading"
@@ -529,6 +535,7 @@ instance Applicative (IPresentation m) where
 instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
+  TweakableInput frm >>= f = Dependent (TweakableInput frm) f
   Resultless p >>= f = Dependent (Resultless p) f
   Styling _ (Pure x) >>= f = f x
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
