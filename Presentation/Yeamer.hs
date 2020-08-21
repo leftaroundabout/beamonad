@@ -83,7 +83,7 @@ import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (cassius, Css)
-import Text.Julius (rawJS)
+import Text.Julius (rawJS, Javascript)
 
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
@@ -178,7 +178,7 @@ makeLenses ''HTMChunkK
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
-   TweakableInput :: Sessionable x => (PrPath -> Html) -> IPresentation m x
+   TweakableInput :: Sessionable x => (PrPath -> (Javascript, Html)) -> IPresentation m x
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
@@ -309,8 +309,11 @@ getExactPositionR pPosition = do
                             (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
-       chooseSlide path _ "" Nothing Nothing (TweakableInput frm)
-           = pure . This . StaticContent $ frm path
+       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput frm) = do
+           let progPath = path<>" span."<>choiceName pdiv
+               (action, contents) = frm progPath
+           toWidget action
+           pure . This $ StaticContent contents
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
@@ -779,6 +782,9 @@ changePos_State (PositionChange path pChangeKind) = do
                            ( Maybe r  -- Key value this branch yields
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
+       go (crumbh,choiceName,crumbp) [] (TweakableInput _) = do
+          key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
+          return $ (key, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
