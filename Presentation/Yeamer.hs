@@ -179,7 +179,8 @@ makeLenses ''HTMChunkK
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => (PrPath -> (Javascript, Html)) -> IPresentation m (Maybe x)
+        => (PrPath -> (JavascriptUrl (Route PresentationServer), Html))
+                          -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
