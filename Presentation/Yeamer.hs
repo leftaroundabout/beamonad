@@ -179,7 +179,8 @@ makeLenses ''HTMChunkK
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => (PrPath -> (JavascriptUrl (Route PresentationServer), Html))
+        => (PrPath -> ( PresProgress -> JavascriptUrl (Route PresentationServer)
+                      , Html))
                           -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
@@ -212,6 +213,7 @@ mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /p/#PresProgress ExactPositionR GET
 /changeposition/#PresProgress/#PositionChange ChPosR GET
+/setvalue/#PresProgress/#PrPath/#ValueToSet SetValR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -314,7 +316,7 @@ getExactPositionR pPosition = do
        chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput frm) = do
            let progPath = path<>" span."<>choiceName pdiv
                (action, contents) = frm progPath
-           toWidget action
+           toWidget . action =<< ask
            pure . This $ StaticContent contents
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
@@ -619,7 +621,40 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
 
 intBox :: Int -> IPresentation m Int
 intBox iDef = fmap (maybe iDef id) . TweakableInput
-        $ \path -> ( [julius|
+        $ \path -> ( \pPosition -> [julius|
+                 $("#{rawJS path} input").change(function(e){
+                     currentVal = parseInt($("#{rawJS path}").value)
+                     pChanger =
+                          "@{SetValR pPosition path NoValGiven}".slice(0, -1)
+                                // The slice hack removes the `NoValGiven`, to
+                                // be replaced with the actual value:
+                          + currentVal;
+                     e.stopPropagation();
+                     hasErrored = false;
+                     $.ajax({
+                           contentType: "application/json",
+                           processData: false,
+                           url: pChanger,
+                           type: "GET",
+                           dataType: "text",
+                           success: function(newURL, textStatus, jqXHR) {
+                              if (isRevert) {
+                                 window.location.replace(newURL);
+                              } else {
+                                 window.location.href = newURL;
+                              }
+                           },
+                           error: function(jqXHR, textStatus, errorThrown) {
+                              $("body").css("cursor","not-allowed");
+                              hasErrored = true;
+                              setTimeout(function() {
+                                 $("body").css("cursor","auto")}, 500);
+                           }
+                        });
+                     setTimeout(function() {
+                         if (!hasErrored) {$("body").css("cursor","wait")}
+                     }, 150);
+                 })
                       |]
                    , [hamlet|
                        <input type="number" value=#{iDef}>
@@ -769,6 +804,10 @@ includeMediaFile mediaSetup fileExt fileSupp = do
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
          CustomFile use -> use servableFile
 
+
+getSetValR :: PresProgress -> PrPath -> ValueToSet -> Handler Text
+getSetValR oldPosition path
+    = getChPosR oldPosition . PositionChange path . PositionSetValue
 
 getChPosR :: PresProgress -> PositionChange -> Handler Text
 getChPosR oldPosition posStep = do

@@ -18,6 +18,7 @@ import qualified Data.Map as Map
 import qualified Data.Vector as Arr
 
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as BSL
 import Data.Text (Text)
 import qualified Data.Text.Encoding as Txt
 import qualified Data.ByteString.Base64.URL as URLBase64
@@ -71,7 +72,9 @@ disassemblePresProgress (PresProgress progs)
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
 
 
-newtype ValueToSet = ValueToSet { getValueToSet :: JSON.Value }
+-- | A hack to embed interactive values from JavaScript.
+data ValueToSet = NoValGiven
+                | ValueToSet { getValueToSet :: JSON.Value }
     deriving (Eq,Show,Read)
 
 instance JSON.FromJSON ValueToSet where
@@ -79,6 +82,7 @@ instance JSON.FromJSON ValueToSet where
 
 instance Flat ValueToSet where
   encode (ValueToSet v) = Flat.encode $ JSON.encode v
+  encode NoValGiven = Flat.encode ()
   decode = do
      vj <- Flat.decode
      case JSON.eitherDecode vj of
@@ -108,3 +112,14 @@ instance PathPiece PositionChange where
                 = Txt.decodeUtf8
                  <<< URLBase64.encode
                    $ flat (lvl, isRev)
+
+
+instance PathPiece ValueToSet where
+  fromPathPiece = Txt.encodeUtf8
+                 >>> JSON.decodeStrict
+                 >>> fmap ValueToSet
+  toPathPiece NoValGiven = mempty
+  toPathPiece (ValueToSet val) = Txt.decodeUtf8
+                 <<< BSL.toStrict
+                 <<< JSON.encode
+                 $ val
