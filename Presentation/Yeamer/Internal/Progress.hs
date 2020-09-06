@@ -71,6 +71,20 @@ disassemblePresProgress (PresProgress progs)
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
 
 
+newtype ValueToSet = ValueToSet { getValueToSet :: JSON.Value }
+
+instance JSON.FromJSON ValueToSet where
+  parseJSON = pure . ValueToSet
+
+instance Flat ValueToSet where
+  encode (ValueToSet v) = Flat.encode $ JSON.encode v
+  decode = do
+     vj <- Flat.decode
+     case JSON.eitherDecode vj of
+       Left err -> fail err
+       Right v -> pure v
+  size (ValueToSet v) = Flat.size $ JSON.encode v
+
 data PositionChangeKind
      = PositionAdvance
      | PositionRevert
