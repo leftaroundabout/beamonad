@@ -314,8 +314,7 @@ getExactPositionR pPosition = do
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
        chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput frm) = do
-           let progPath = path<>" span."<>choiceName pdiv
-               (action, contents) = frm progPath
+           let (action, contents) = frm path
            toWidget . action =<< ask
            pure . This $ StaticContent contents
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
@@ -623,7 +622,7 @@ intBox :: Int -> IPresentation m Int
 intBox iDef = fmap (maybe iDef id) . TweakableInput
         $ \path -> ( \pPosition -> [julius|
                  $("#{rawJS path} input").change(function(e){
-                     currentVal = parseInt($("#{rawJS path}").value)
+                     currentVal = parseInt($("#{rawJS path} input").val())
                      pChanger =
                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
                                 // The slice hack removes the `NoValGiven`, to
