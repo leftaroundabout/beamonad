@@ -72,6 +72,7 @@ disassemblePresProgress (PresProgress progs)
 
 
 newtype ValueToSet = ValueToSet { getValueToSet :: JSON.Value }
+    deriving (Eq,Show,Read)
 
 instance JSON.FromJSON ValueToSet where
   parseJSON = pure . ValueToSet
@@ -88,6 +89,7 @@ instance Flat ValueToSet where
 data PositionChangeKind
      = PositionAdvance
      | PositionRevert
+     | PositionSetValue ValueToSet
   deriving (Generic, Eq, Show, Read)
 instance JSON.FromJSON PositionChangeKind
 instance Flat PositionChangeKind
