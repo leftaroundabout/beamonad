@@ -24,7 +24,7 @@ import Data.Semigroup.Numbered
 import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Flat (Flat)
+import Flat (Flat)
 
 import Data.Ratio ((%))
 

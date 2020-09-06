@@ -15,7 +15,7 @@ import Data.Function (fix)
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 
-import Data.Flat (Flat(..))
+import Flat (Flat(..))
 
 import qualified Diagrams.Prelude as Dia
 import qualified Diagrams.Backend.Cairo as Dia

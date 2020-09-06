@@ -70,7 +70,7 @@ import Data.String (IsString (..))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BC8
-import Data.Flat (Flat, flat, unflat)
+import Flat (Flat, flat, unflat)
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM

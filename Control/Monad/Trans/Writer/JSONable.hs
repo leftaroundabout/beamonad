@@ -17,7 +17,7 @@
 module Control.Monad.Trans.Writer.JSONable where
 
 import Data.Aeson
-import Data.Flat
+import Flat
 import GHC.Generics
 import Data.Semigroup
 

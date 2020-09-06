@@ -22,7 +22,8 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as Txt
 import qualified Data.ByteString.Base64.URL as URLBase64
 
-import Data.Flat (Flat, flat, unflat)
+import Flat (Flat, flat, unflat)
+import qualified Flat.Class as Flat
 import qualified Data.Aeson as JSON
 
 import Yesod (PathPiece(..))
