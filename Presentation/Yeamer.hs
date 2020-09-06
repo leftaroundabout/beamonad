@@ -179,7 +179,7 @@ makeLenses ''HTMChunkK
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => (PrPath -> (Javascript, Html)) -> IPresentation m x
+        => (PrPath -> (Javascript, Html)) -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
@@ -787,10 +787,10 @@ changePos_State (PositionChange path pChangeKind) = do
           case pChangeKind of
            PositionSetValue (ValueToSet newVal)
             | JSON.Success v <- JSON.fromJSON newVal -> 
-             return (Just v, True)
+             return (Just $ Just v, True)
            _ -> do
              key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
-             return $ (key, True)
+             return $ (maybe Nothing id key, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
