@@ -617,6 +617,15 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                               $ f . runIdentity) runIdentity
                . Identity
 
+intBox :: Int -> IPresentation m Int
+intBox iDef = fmap (maybe iDef id) . TweakableInput
+        $ \path -> ( [julius|
+                      |]
+                   , [hamlet|
+                       <input type="number" value=#{iDef}>
+                      |]()
+                   )
+
 infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
