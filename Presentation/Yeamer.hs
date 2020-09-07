@@ -196,6 +196,8 @@ data IPresentation m r where
    Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
    Interactive :: Sessionable r
           => IPresentation m () -> m r -> IPresentation m r
+   Feedback :: Sessionable r
+           => (Maybe r -> IPresentation m r) -> IPresentation m r
    Dependent :: Sessionable x
                    => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
 instance (r ~ ()) => IsString (IPresentation m r) where
@@ -279,6 +281,7 @@ preprocPres (Encaps GriddedBlocks ff p)
 preprocPres (Pure x) = Pure x
 preprocPres (Deterministic f p) = Deterministic f $ preprocPres p
 preprocPres (Interactive p a) = Interactive (preprocPres p) a
+preprocPres (Feedback f) = Feedback $ preprocPres . f
 preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 
@@ -291,6 +294,7 @@ isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
 isInline (Encaps _ _ _) = False
 isInline (Styling _ q) = isInline q
 isInline (Interactive q _) = isInline q
+isInline (Feedback f) = False
 isInline (Resultless q) = isInline q
 isInline (Dependent q _) = isInline q
 isInline (Deterministic _ q) = isInline q
@@ -352,6 +356,11 @@ getExactPositionR pPosition = do
            case purity ^? here of
              Just pres -> pure . This $ discardResult pres
              Nothing   -> That <$> liftIO followAction
+       chooseSlide path choiceName pdiv bwd fwd (Feedback conts) = do
+           prefetch <- chooseSlide path choiceName pdiv bwd fwd $ conts Nothing
+           case prefetch ^? there of
+             Just v -> chooseSlide path choiceName pdiv bwd fwd . conts $ Just v
+             Nothing   -> pure prefetch
        chooseSlide path choiceName "" Nothing Nothing (Resultless conts) = do
            purity <- chooseSlide path choiceName "" Nothing Nothing conts
            case purity ^? here of
