@@ -381,45 +381,45 @@ getExactPositionR pPosition = do
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
               [previous,next] = maybe "null" id <$> [bwd, fwd]
           toWidget [julius|
-                 $("#{rawJS newPath}").click(function(e){
-                     if (e.ctrlKey && #{rawJS revertPossible}) {
-                         isRevert = true;
-                         pChanger =
-                          "@{ChPosR pPosition (PositionChange previous PositionRevert)}";
-                     } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
-                         isRevert = false;
-                         pChanger =
-                          "@{ChPosR pPosition (PositionChange next PositionAdvance)}";
-                     } else {
-                         return;
-                     }
-                     e.stopPropagation();
-                     hasErrored = false;
-                     $.ajax({
-                           contentType: "application/json",
-                           processData: false,
-                           url: pChanger,
-                           type: "GET",
-                           dataType: "text",
-                           success: function(newURL, textStatus, jqXHR) {
-                              if (isRevert) {
-                                 window.location.replace(newURL);
-                              } else {
-                                 window.location.href = newURL;
-                              }
-                           },
-                           error: function(jqXHR, textStatus, errorThrown) {
-                              $("body").css("cursor","not-allowed");
-                              hasErrored = true;
-                              setTimeout(function() {
-                                 $("body").css("cursor","auto")}, 500);
-                           }
-                        });
-                     setTimeout(function() {
-                         if (!hasErrored) {$("body").css("cursor","wait")}
-                     }, 150);
-                 })
-               |]
+             $("#{rawJS newPath}").click(function(e){
+                 if (e.ctrlKey && #{rawJS revertPossible}) {
+                     isRevert = true;
+                     pChanger =
+                      "@{ChPosR pPosition (PositionChange previous PositionRevert)}";
+                 } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
+                     isRevert = false;
+                     pChanger =
+                      "@{ChPosR pPosition (PositionChange next PositionAdvance)}";
+                 } else {
+                     return;
+                 }
+                 e.stopPropagation();
+                 hasErrored = false;
+                 $.ajax({
+                       contentType: "application/json",
+                       processData: false,
+                       url: pChanger,
+                       type: "GET",
+                       dataType: "text",
+                       success: function(newURL, textStatus, jqXHR) {
+                          if (isRevert) {
+                             window.location.replace(newURL);
+                          } else {
+                             window.location.href = newURL;
+                          }
+                       },
+                       error: function(jqXHR, textStatus, errorThrown) {
+                          $("body").css("cursor","not-allowed");
+                          hasErrored = true;
+                          setTimeout(function() {
+                             $("body").css("cursor","auto")}, 500);
+                       }
+                    });
+                 setTimeout(function() {
+                     if (!hasErrored) {$("body").css("cursor","wait")}
+                 }, 150);
+             })
+            |]
           (here %~ spanClass thisChoice)
                   <$> chooseSlide newPath (disambiguateChoiceName choiceName)
                            "" Nothing Nothing pres
