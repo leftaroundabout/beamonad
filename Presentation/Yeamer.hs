@@ -180,7 +180,8 @@ makeLenses ''HTMChunkK
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => (PrPath -> ( Text   -- ^ The “final leaf” of the DOM path
+        => Maybe x
+         -> ( PrPath -> ( Text   -- ^ The “final leaf” of the DOM path
                       , Maybe x -> -- ^ An already stored value
                          ( PresProgress -> JavascriptUrl (Route PresentationServer)
                          , Html )
@@ -229,7 +230,7 @@ instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
-preprocPres (TweakableInput frm) = TweakableInput frm
+preprocPres (TweakableInput defV frm) = TweakableInput defV frm
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) ff p) = Encaps (WithHeading h) ff $ preprocPres<$>p
@@ -283,7 +284,7 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
-isInline (TweakableInput _) = False
+isInline (TweakableInput _ _) = False
 isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
                    HTMDiv _ -> False ) qs
@@ -317,15 +318,16 @@ getExactPositionR pPosition = do
                             (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
-       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput frm) = do
+       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput defV frm) = do
            let (leafNm, interactor) = frm path
                fullPath = path<>leafNm
            storedValue <- lookupProgress fullPath
            let (action, contents) = interactor storedValue
            toWidget . action =<< ask
-           pure $ case storedValue of
-             Nothing -> This $ StaticContent contents
-             Just r  -> These (StaticContent contents) (Just r)
+           pure $ case (defV, storedValue) of
+             (Nothing, Nothing) -> This $ StaticContent contents
+             (_, Just r)  -> These (StaticContent contents) (Just r)
+             (Just r, _)  -> These (StaticContent contents) (Just r)
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
@@ -517,7 +519,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
-outerConstructorName (TweakableInput _) = "TweakableInput"
+outerConstructorName (TweakableInput _ _) = "TweakableInput"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _ _) = "Encaps WithHeading"
@@ -550,7 +552,7 @@ instance Applicative (IPresentation m) where
 instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
-  TweakableInput frm >>= f = Dependent (TweakableInput frm) f
+  TweakableInput defV frm >>= f = Dependent (TweakableInput defV frm) f
   Resultless p >>= f = Dependent (Resultless p) f
   Styling _ (Pure x) >>= f = f x
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
@@ -628,13 +630,16 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                . Identity
 
 intBox :: Int -> IPresentation m Int
-intBox iDef = fmap (maybe iDef id) . TweakableInput $ \path
+intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path
       -> ( leafNm
          , \prevInp ->
             let currentVal = case prevInp of
                  Nothing -> iDef
                  Just v -> v
             in ( \pPosition -> [julius|
+                 $("#{rawJS path} input").click(function(e){
+                     e.stopPropagation();
+                   })
                  $("#{rawJS path} input").change(function(e){
                      currentVal = parseInt($("#{rawJS path} input").val())
                      pChanger =
@@ -651,11 +656,7 @@ intBox iDef = fmap (maybe iDef id) . TweakableInput $ \path
                            type: "GET",
                            dataType: "text",
                            success: function(newURL, textStatus, jqXHR) {
-                              if (isRevert) {
-                                 window.location.replace(newURL);
-                              } else {
-                                 window.location.href = newURL;
-                              }
+                              window.location.href = newURL;
                            },
                            error: function(jqXHR, textStatus, errorThrown) {
                               $("body").css("cursor","not-allowed");
@@ -846,17 +847,23 @@ changePos_State (PositionChange path pChangeKind) = do
                            ( Maybe r  -- Key value this branch yields
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
-       go (crumbh,choiceName,crumbp) [] (TweakableInput twInp) = do
+       go (crumbh,choiceName,crumbp) [] (TweakableInput defV twInp) = do
           let (pathFin, _) = twInp crumbh
               fullPath = crumbh<>pathFin
           case pChangeKind of
            PositionSetValue (ValueToSet newVal)
-            | JSON.Success v <- JSON.fromJSON newVal -> do
-             setProgress fullPath v
-             return (Just $ Just v, True)
+            -> case JSON.fromJSON newVal of
+              JSON.Success v -> do
+               setProgress fullPath v
+               return (Just $ Just v, True)
+              JSON.Error e -> fail e
            _ -> do
              key <- lookupProgress fullPath
-             return $ (Just<$>key, True)
+             let result = case (key, defV) of
+                  (Just v, _) -> Just v
+                  (_, Just v) -> Just v
+                  (Nothing, Nothing) -> Nothing
+             return $ (Just result, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
