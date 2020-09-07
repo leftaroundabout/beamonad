@@ -47,7 +47,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Haskell values
                            , InteractiveShow(..)
                            -- ** Interactive parameters
-                           , intBox, feedback_
+                           , inputBox, feedback_
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            , module Data.Monoid
@@ -669,8 +669,23 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                               $ f . runIdentity) runIdentity
                . Identity
 
-intBox :: Int -> IPresentation m Int
-intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+class Sessionable i => Inputtable i where
+  inputElemHtml :: i      -- ^ Current value
+                -> String -- ^ id in the DOM
+                -> Html
+
+instance Inputtable Int where
+  inputElemHtml currentVal hashedId = [hamlet|
+        <input type="number" id="#{hashedId}" value=#{currentVal}>
+       |]()
+
+instance Inputtable Double where
+  inputElemHtml currentVal hashedId = [hamlet|
+        <input type="number" id="#{hashedId}" value=#{currentVal} step="any">
+       |]()
+
+inputBox :: (Inputtable i, JSON.FromJSON i) => i -> IPresentation m i
+inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
       let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
           inputElId = "input#"++hashedId
       in ( leafNm
@@ -683,7 +698,7 @@ intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
                      e.stopPropagation();
                    })
                  $("#{rawJS inputElId}").change(function(e){
-                     currentVal = parseInt($("#{rawJS inputElId}").val())
+                     currentVal = $("#{rawJS inputElId}").val()
                      pChanger =
                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
                                 // The slice hack removes the `NoValGiven`, to
@@ -712,9 +727,7 @@ intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
                      }, 150);
                  })
                       |]
-               , [hamlet|
-                       <input type="number" id="#{hashedId}" value=#{currentVal}>
-                      |]()
+               , inputElemHtml currentVal hashedId
                ) )
  where leafNm = " input"
 

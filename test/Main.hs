@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE TypeApplications  #-}
 
 import Presentation.Yeamer
 import Presentation.Yeamer.Maths
@@ -78,9 +79,9 @@ main = yeamer . styling ([lucius|
 
    "Int boxes"
     ====== do
-    (const() <$> intBox 3 →│→ \i -> fromString $ "Value is "<>show i)
+    (const() <$> inputBox @Int 1 →│→ \i -> fromString $ "Value is "<>show i)
      ──
-     (const() <$> (intBox 5 →│← intBox 5) →│→ \(i,j)
+     (const() <$> (inputBox 2 →│← inputBox pi) →│→ \(i,j)
                    -> fromString ("Sum is "<>show (i+j))
                  )
 
