@@ -509,6 +509,14 @@ instance ∀ m . Monoid (IPresentation m ()) where
   mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
+infixr 6 →│←
+(→│←) :: (Sessionable a, Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
+l→│←r = fmap (\(GridDivisions [[GridRegion (Left a), GridRegion (Right b)]])
+                 -> (a,b))
+       . Encaps GriddedBlocks id
+       $ GridDivisions [GridRegion<$>[Left<$>l, Right<$>r]]
+
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
   sappendN _ (Resultless (Encaps GriddedBlocks _ l))
              (Resultless (Encaps GriddedBlocks _ r))
