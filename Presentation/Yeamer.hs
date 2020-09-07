@@ -670,18 +670,20 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                . Identity
 
 intBox :: Int -> IPresentation m Int
-intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path
-      -> ( leafNm
+intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+      let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
+          inputElId = "input#"++hashedId
+      in ( leafNm
          , \prevInp ->
             let currentVal = case prevInp of
                  Nothing -> iDef
                  Just v -> v
             in ( \pPosition -> [julius|
-                 $("#{rawJS path} input").click(function(e){
+                 $("#{rawJS inputElId}").click(function(e){
                      e.stopPropagation();
                    })
-                 $("#{rawJS path} input").change(function(e){
-                     currentVal = parseInt($("#{rawJS path} input").val())
+                 $("#{rawJS inputElId}").change(function(e){
+                     currentVal = parseInt($("#{rawJS inputElId}").val())
                      pChanger =
                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
                                 // The slice hack removes the `NoValGiven`, to
@@ -711,7 +713,7 @@ intBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path
                  })
                       |]
                , [hamlet|
-                       <input type="number" value=#{currentVal}>
+                       <input type="number" id="#{hashedId}" value=#{currentVal}>
                       |]()
                ) )
  where leafNm = " input"
