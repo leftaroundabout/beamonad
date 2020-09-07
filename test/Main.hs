@@ -78,17 +78,11 @@ main = yeamer . styling ([lucius|
 
    "Int boxes"
     ====== do
-    feedback_ (\currentVals -> (pure <$> intBox 3)
-              <> (const [] <$> case currentVals of
-                   Nothing -> "go ahead..."
-                   Just [i] -> fromString ("Value is "<>show i)
-                 ))
-     │ 
-     feedback_ (\currentVals -> (pure <$> intBox 5 →│← intBox 5)
-              <> (const [] <$> case currentVals of
-                   Nothing -> "go ahead..."
-                   Just [(i,j)] -> fromString ("Sum is "<>show (i+j))
-                 ))
+    (const() <$> intBox 3 →│→ \i -> fromString $ "Value is "<>show i)
+     ──
+     (const() <$> (intBox 5 →│← intBox 5) →│→ \(i,j)
+                   -> fromString ("Sum is "<>show (i+j))
+                 )
 
    "Code block"
     ====== [plaintext|

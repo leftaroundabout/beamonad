@@ -53,6 +53,8 @@ module Presentation.Yeamer ( Presentation
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
                            , (→│←)
+                           , (→│)
+                           , (→│→)
                            -- * CSS
                            , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration
@@ -510,7 +512,21 @@ instance ∀ m . Monoid (IPresentation m ()) where
   mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
-infixr 6 →│←
+infix 6 →│
+(→│) :: (Sessionable a)
+    => IPresentation m a -> IPresentation m b -> IPresentation m a
+l→│r = fmap (\(GridDivisions [[GridRegion (Just a), GridRegion Nothing]]) -> a)
+       . Encaps GriddedBlocks id
+       $ GridDivisions [GridRegion<$>[ Just<$>l, const Nothing<$>r ]]
+
+infix 6 →│→
+(→│→) :: (Sessionable a)
+    => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
+l→│→r = Feedback $ \aFbq -> l →│ case aFbq of
+                                  Just a -> r a
+                                  othing -> mempty
+
+infix 6 →│←
 (→│←) :: (Sessionable a, Sessionable b)
     => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
 l→│←r = fmap (\(GridDivisions [[GridRegion (Left a), GridRegion (Right b)]])
