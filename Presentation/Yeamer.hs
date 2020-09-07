@@ -52,6 +52,7 @@ module Presentation.Yeamer ( Presentation
                            , addHeading, (======), discardResult
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
+                           , (→│←)
                            -- * CSS
                            , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration

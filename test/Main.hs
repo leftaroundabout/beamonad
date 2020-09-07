@@ -84,10 +84,10 @@ main = yeamer . styling ([lucius|
                    Just [i] -> fromString ("Value is "<>show i)
                  ))
      │ 
-     feedback_ (\currentVals -> (pure <$> intBox 5)
+     feedback_ (\currentVals -> (pure <$> intBox 5 →│← intBox 5)
               <> (const [] <$> case currentVals of
                    Nothing -> "go ahead..."
-                   Just [i] -> fromString ("Value is "<>show i)
+                   Just [(i,j)] -> fromString ("Sum is "<>show (i+j))
                  ))
 
    "Code block"
