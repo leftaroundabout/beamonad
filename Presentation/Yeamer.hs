@@ -563,6 +563,7 @@ instance ∀ m . Monad (IPresentation m) where
   StaticContent c >>= f = Dependent (StaticContent c) f
   TweakableInput defV frm >>= f = Dependent (TweakableInput defV frm) f
   Resultless p >>= f = Dependent (Resultless p) f
+  Feedback p >>= f = Dependent (Feedback p) f
   Styling _ (Pure x) >>= f = f x
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
   Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
@@ -893,6 +894,7 @@ changePos_State (PositionChange path pChangeKind) = do
        go crumbs [] (Resultless c) = (Just (),) <$> hasDisplayableContent crumbs c
        go crumbs path (Resultless c) = first (const $ Just()) <$> go crumbs path c
        go crumbs path (Interactive p _) = first (const Nothing) <$> go crumbs path p
+       go crumbs path (Feedback p) = go crumbs path $ p Nothing
        go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
            = first (const Nothing)
                 <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
