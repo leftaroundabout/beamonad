@@ -91,6 +91,7 @@ import qualified Language.Javascript.JQuery as JQuery
 import Language.Haskell.TH.Syntax ( Exp(LitE, AppE, VarE, ConE)
                                   , Lit(StringL), Name, runIO )
 import GHC.TypeLits (KnownSymbol, symbolVal)
+import GHC.Stack (HasCallStack)
 import Data.Int (Int64, Int32, Int16)
 import Language.Haskell.TH.Quote
 
@@ -851,12 +852,11 @@ changePos_State (PositionChange path pChangeKind) = do
           case pChangeKind of
            PositionSetValue (ValueToSet newVal)
             | JSON.Success v <- JSON.fromJSON newVal -> do
-                                                      
              setProgress fullPath v
              return (Just $ Just v, True)
            _ -> do
              key <- lookupProgress fullPath
-             return $ (maybe Nothing id key, True)
+             return $ (Just<$>key, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
@@ -1011,7 +1011,7 @@ getResetR = do
 
 
 class (MonadHandler m) => KnowsProgressState m where
-  lookupProgress :: Flat x => PrPath -> m (Maybe x)
+  lookupProgress :: (HasCallStack, Flat x) => PrPath -> m (Maybe x)
 
 instance MonadHandler m
             => KnowsProgressState (StateT PresProgress m) where
