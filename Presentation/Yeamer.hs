@@ -46,6 +46,8 @@ module Presentation.Yeamer ( Presentation
                            , verbatim, plaintext, verbatimWithin
                            -- ** Haskell values
                            , InteractiveShow(..)
+                           -- ** Interactive parameters
+                           , intBox, feedback_
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            , module Data.Monoid
@@ -544,6 +546,9 @@ discardResult :: IPresentation m r -> IPresentation m ()
 discardResult (StaticContent c) = StaticContent c
 discardResult (Resultless p) = Resultless p
 discardResult p = Resultless p
+
+feedback_ :: Sessionable a => (Maybe a -> IPresentation m a) -> IPresentation m ()
+feedback_ = discardResult . Feedback
 
 serverSide :: Sessionable a => m a -> IPresentation m a
 serverSide = Interactive (pure ())

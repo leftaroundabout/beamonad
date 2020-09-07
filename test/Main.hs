@@ -76,6 +76,19 @@ main = yeamer . styling ([lucius|
     ======
     "Simple test “presentation”"
 
+   "Int boxes"
+    ====== do
+    feedback_ (\currentVals -> (pure <$> intBox 3)
+              <> (const [] <$> case currentVals of
+                   Nothing -> "go ahead..."
+                   Just [i] -> fromString ("Value is "<>show i)
+                 ))
+     │ 
+     feedback_ (\currentVals -> (pure <$> intBox 5)
+              <> (const [] <$> case currentVals of
+                   Nothing -> "go ahead..."
+                   Just [i] -> fromString ("Value is "<>show i)
+                 ))
 
    "Code block"
     ====== [plaintext|
