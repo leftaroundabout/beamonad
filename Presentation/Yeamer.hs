@@ -179,8 +179,11 @@ makeLenses ''HTMChunkK
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => (PrPath -> ( PresProgress -> JavascriptUrl (Route PresentationServer)
-                      , Html))
+        => (PrPath -> ( Text   -- ^ The “final leaf” of the DOM path
+                      , Maybe x -> -- ^ An already stored value
+                         ( PresProgress -> JavascriptUrl (Route PresentationServer)
+                         , Html )
+                      ))
                           -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
@@ -314,9 +317,14 @@ getExactPositionR pPosition = do
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
        chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput frm) = do
-           let (action, contents) = frm path
+           let (leafNm, interactor) = frm path
+               fullPath = path<>leafNm
+           storedValue <- lookupProgress fullPath
+           let (action, contents) = interactor storedValue
            toWidget . action =<< ask
-           pure . This $ StaticContent contents
+           pure $ case storedValue of
+             Nothing -> This $ StaticContent contents
+             Just r  -> These (StaticContent contents) (Just r)
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
@@ -619,8 +627,13 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                . Identity
 
 intBox :: Int -> IPresentation m Int
-intBox iDef = fmap (maybe iDef id) . TweakableInput
-        $ \path -> ( \pPosition -> [julius|
+intBox iDef = fmap (maybe iDef id) . TweakableInput $ \path
+      -> ( leafNm
+         , \prevInp ->
+            let currentVal = case prevInp of
+                 Nothing -> iDef
+                 Just v -> v
+            in ( \pPosition -> [julius|
                  $("#{rawJS path} input").change(function(e){
                      currentVal = parseInt($("#{rawJS path} input").val())
                      pChanger =
@@ -655,10 +668,11 @@ intBox iDef = fmap (maybe iDef id) . TweakableInput
                      }, 150);
                  })
                       |]
-                   , [hamlet|
-                       <input type="number" value=#{iDef}>
+               , [hamlet|
+                       <input type="number" value=#{currentVal}>
                       |]()
-                   )
+               ) )
+ where leafNm = " input"
 
 infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
@@ -831,13 +845,17 @@ changePos_State (PositionChange path pChangeKind) = do
                            ( Maybe r  -- Key value this branch yields
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
-       go (crumbh,choiceName,crumbp) [] (TweakableInput _) = do
+       go (crumbh,choiceName,crumbp) [] (TweakableInput twInp) = do
+          let (pathFin, _) = twInp crumbh
+              fullPath = crumbh<>pathFin
           case pChangeKind of
            PositionSetValue (ValueToSet newVal)
-            | JSON.Success v <- JSON.fromJSON newVal -> 
+            | JSON.Success v <- JSON.fromJSON newVal -> do
+                                                      
+             setProgress fullPath v
              return (Just $ Just v, True)
            _ -> do
-             key <- lookupProgress $ crumbh <> " span."<>choiceName crumbp
+             key <- lookupProgress fullPath
              return $ (maybe Nothing id key, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
