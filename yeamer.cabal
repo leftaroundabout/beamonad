@@ -44,7 +44,7 @@ library
                        , containers
                        , microlens >=0.4 && <0.6
                        , microlens-th
-                       , these >=0.7 && <1.1
+                       , these >=0.7 && <1.2
                        , these-lens
                        , text 
                        , bytestring 
