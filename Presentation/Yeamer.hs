@@ -781,7 +781,7 @@ verbatimWithin env
          | otherwise  = preescapeInline s
        preescapeBlock s = intercalate "<br>" $ drop zeroIndent <$> sLines
         where zeroIndent = minimum $ length . takeWhile (==' ') <$> sLines
-              sLines = lines s
+              sLines = preescapeInline <$> lines s
        preescapeInline = concatMap preescapeChar
        preescapeChar '<' = "&lt;"
        preescapeChar '>' = "&gt;"

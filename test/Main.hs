@@ -91,6 +91,7 @@ main = yeamer . styling ([lucius|
          blub
            bli
          blum
+         <wun>
           |]
    
    "Lazy Haskell structures"
