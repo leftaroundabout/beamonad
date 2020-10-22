@@ -617,10 +617,18 @@ maths :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
 maths eqns = renderTeXMaths MathML.DisplayBlock . TMM.maths eqns
 
 renderTeXMaths :: MathML.DisplayType -> LaTeX -> IPresentation m ()
-renderTeXMaths dispSty tex = case MathML.readTeX . Txt.unpack $ LaTeX.render tex of
+renderTeXMaths dispSty tex = case MathML.readTeX
+#if !MIN_VERSION_texmath(0,12,0)
+                                   . Txt.unpack
+#endif
+                                   $ LaTeX.render tex of
          Right exps -> StaticContent . HTM.preEscapedText . Txt.pack . XML.showElement
                         $ MathML.writeMathML dispSty exps
-         Left err -> error $ "Failed to re-parse generated LaTeX. "++err
+         Left err -> error $ "Failed to re-parse generated LaTeX. "++
+#if MIN_VERSION_texmath(0,12,0)
+                               Txt.unpack
+#endif
+                                 err
 
 -- | Include a piece of plaintext, preserving all formatting. To be used in an
 --   oxford bracket.
