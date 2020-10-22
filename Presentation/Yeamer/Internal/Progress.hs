@@ -18,11 +18,13 @@ import qualified Data.Map as Map
 import qualified Data.Vector as Arr
 
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as BSL
 import Data.Text (Text)
 import qualified Data.Text.Encoding as Txt
 import qualified Data.ByteString.Base64.URL as URLBase64
 
-import Data.Flat (Flat, flat, unflat)
+import Flat (Flat, flat, unflat)
+import qualified Flat.Class as Flat
 import qualified Data.Aeson as JSON
 
 import Yesod (PathPiece(..))
@@ -70,9 +72,28 @@ disassemblePresProgress (PresProgress progs)
        (compressedProgs,progKeyRsr) = rmRedundancy $ Map.fromList keyCompressed
 
 
+-- | A hack to embed interactive values from JavaScript.
+data ValueToSet = NoValGiven
+                | ValueToSet { getValueToSet :: JSON.Value }
+    deriving (Eq,Show,Read)
+
+instance JSON.FromJSON ValueToSet where
+  parseJSON = pure . ValueToSet
+
+instance Flat ValueToSet where
+  encode (ValueToSet v) = Flat.encode $ JSON.encode v
+  encode NoValGiven = Flat.encode ()
+  decode = do
+     vj <- Flat.decode
+     case JSON.eitherDecode vj of
+       Left err -> fail err
+       Right v -> pure v
+  size (ValueToSet v) = Flat.size $ JSON.encode v
+
 data PositionChangeKind
      = PositionAdvance
      | PositionRevert
+     | PositionSetValue ValueToSet
   deriving (Generic, Eq, Show, Read)
 instance JSON.FromJSON PositionChangeKind
 instance Flat PositionChangeKind
@@ -91,3 +112,14 @@ instance PathPiece PositionChange where
                 = Txt.decodeUtf8
                  <<< URLBase64.encode
                    $ flat (lvl, isRev)
+
+
+instance PathPiece ValueToSet where
+  fromPathPiece = Txt.encodeUtf8
+                 >>> JSON.decodeStrict
+                 >>> fmap ValueToSet
+  toPathPiece NoValGiven = mempty
+  toPathPiece (ValueToSet val) = Txt.decodeUtf8
+                 <<< BSL.toStrict
+                 <<< JSON.encode
+                 $ val

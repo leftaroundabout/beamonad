@@ -46,10 +46,15 @@ module Presentation.Yeamer ( Presentation
                            , verbatim, plaintext, verbatimWithin
                            -- ** Haskell values
                            , InteractiveShow(..)
+                           -- ** Interactive parameters
+                           , inputBox, feedback_
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
+                           , (→│←)
+                           , (→│)
+                           , (→│→)
                            -- * CSS
                            , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration
@@ -70,7 +75,7 @@ import Data.String (IsString (..))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BC8
-import Data.Flat (Flat, flat, unflat)
+import Flat (Flat, flat, unflat)
 import qualified Data.Aeson as JSON
 import qualified Text.Blaze.Html5 as HTM
 import qualified Text.Blaze.Html5.Attributes as HTM
@@ -83,7 +88,7 @@ import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (cassius, Css)
-import Text.Julius (rawJS)
+import Text.Julius (rawJS, Javascript)
 
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
@@ -91,6 +96,7 @@ import qualified Language.Javascript.JQuery as JQuery
 import Language.Haskell.TH.Syntax ( Exp(LitE, AppE, VarE, ConE)
                                   , Lit(StringL), Name, runIO )
 import GHC.TypeLits (KnownSymbol, symbolVal)
+import GHC.Stack (HasCallStack)
 import Data.Int (Int64, Int32, Int16)
 import Language.Haskell.TH.Quote
 
@@ -178,6 +184,14 @@ makeLenses ''HTMChunkK
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
+   TweakableInput :: (Sessionable x, JSON.FromJSON x)
+        => Maybe x
+         -> ( PrPath -> ( Text   -- ^ The “final leaf” of the DOM path
+                      , Maybe x -> -- ^ An already stored value
+                         ( PresProgress -> JavascriptUrl (Route PresentationServer)
+                         , Html )
+                      ))
+                          -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
@@ -187,6 +201,8 @@ data IPresentation m r where
    Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
    Interactive :: Sessionable r
           => IPresentation m () -> m r -> IPresentation m r
+   Feedback :: Sessionable r
+           => (Maybe r -> IPresentation m r) -> IPresentation m r
    Dependent :: Sessionable x
                    => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
 instance (r ~ ()) => IsString (IPresentation m r) where
@@ -209,6 +225,7 @@ mkYesod "PresentationServer" [parseRoutes|
 / HomeR GET
 /p/#PresProgress ExactPositionR GET
 /changeposition/#PresProgress/#PositionChange ChPosR GET
+/setvalue/#PresProgress/#PrPath/#ValueToSet SetValR GET
 /reset ResetR GET
 /static StaticR EmbeddedStatic getStatic
 /pseudostatic PStaticR Static getPseudostatic
@@ -220,6 +237,7 @@ instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
+preprocPres (TweakableInput defV frm) = TweakableInput defV frm
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) ff p) = Encaps (WithHeading h) ff $ preprocPres<$>p
@@ -268,17 +286,20 @@ preprocPres (Encaps GriddedBlocks ff p)
 preprocPres (Pure x) = Pure x
 preprocPres (Deterministic f p) = Deterministic f $ preprocPres p
 preprocPres (Interactive p a) = Interactive (preprocPres p) a
+preprocPres (Feedback f) = Feedback $ preprocPres . f
 preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
+isInline (TweakableInput _ _) = False
 isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
                    HTMDiv _ -> False ) qs
 isInline (Encaps _ _ _) = False
 isInline (Styling _ q) = isInline q
 isInline (Interactive q _) = isInline q
+isInline (Feedback f) = False
 isInline (Resultless q) = isInline q
 isInline (Dependent q _) = isInline q
 isInline (Deterministic _ q) = isInline q
@@ -306,6 +327,16 @@ getExactPositionR pPosition = do
                             (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
+       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput defV frm) = do
+           let (leafNm, interactor) = frm path
+               fullPath = path<>leafNm
+           storedValue <- lookupProgress fullPath
+           let (action, contents) = interactor storedValue
+           toWidget . action =<< ask
+           pure $ case (defV, storedValue) of
+             (Nothing, Nothing) -> This $ StaticContent contents
+             (_, Just r)  -> These (StaticContent contents) (Just r)
+             (Just r, _)  -> These (StaticContent contents) (Just r)
        chooseSlide path choiceName "" Nothing Nothing (Styling sty conts)
                      = mapM_ toWidget sty
                         >> chooseSlide path choiceName "" Nothing Nothing conts
@@ -330,6 +361,11 @@ getExactPositionR pPosition = do
            case purity ^? here of
              Just pres -> pure . This $ discardResult pres
              Nothing   -> That <$> liftIO followAction
+       chooseSlide path choiceName pdiv bwd fwd (Feedback conts) = do
+           prefetch <- chooseSlide path choiceName pdiv bwd fwd $ conts Nothing
+           case prefetch ^? there of
+             Just v -> chooseSlide path choiceName pdiv bwd fwd . conts $ Just v
+             Nothing   -> pure prefetch
        chooseSlide path choiceName "" Nothing Nothing (Resultless conts) = do
            purity <- chooseSlide path choiceName "" Nothing Nothing conts
            case purity ^? here of
@@ -359,45 +395,45 @@ getExactPositionR pPosition = do
                  = maybe "false" (const "true") <$> [bwd,fwd] :: [Text]
               [previous,next] = maybe "null" id <$> [bwd, fwd]
           toWidget [julius|
-                 $("#{rawJS newPath}").click(function(e){
-                     if (e.ctrlKey && #{rawJS revertPossible}) {
-                         isRevert = true;
-                         pChanger =
-                          "@{ChPosR pPosition (PositionChange previous PositionRevert)}";
-                     } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
-                         isRevert = false;
-                         pChanger =
-                          "@{ChPosR pPosition (PositionChange next PositionAdvance)}";
-                     } else {
-                         return;
-                     }
-                     e.stopPropagation();
-                     hasErrored = false;
-                     $.ajax({
-                           contentType: "application/json",
-                           processData: false,
-                           url: pChanger,
-                           type: "GET",
-                           dataType: "text",
-                           success: function(newURL, textStatus, jqXHR) {
-                              if (isRevert) {
-                                 window.location.replace(newURL);
-                              } else {
-                                 window.location.href = newURL;
-                              }
-                           },
-                           error: function(jqXHR, textStatus, errorThrown) {
-                              $("body").css("cursor","not-allowed");
-                              hasErrored = true;
-                              setTimeout(function() {
-                                 $("body").css("cursor","auto")}, 500);
-                           }
-                        });
-                     setTimeout(function() {
-                         if (!hasErrored) {$("body").css("cursor","wait")}
-                     }, 150);
-                 })
-               |]
+             $("#{rawJS newPath}").click(function(e){
+                 if (e.ctrlKey && #{rawJS revertPossible}) {
+                     isRevert = true;
+                     pChanger =
+                      "@{ChPosR pPosition (PositionChange previous PositionRevert)}";
+                 } else if (!(e.ctrlKey) && #{rawJS progressPossible}) {
+                     isRevert = false;
+                     pChanger =
+                      "@{ChPosR pPosition (PositionChange next PositionAdvance)}";
+                 } else {
+                     return;
+                 }
+                 e.stopPropagation();
+                 hasErrored = false;
+                 $.ajax({
+                       contentType: "application/json",
+                       processData: false,
+                       url: pChanger,
+                       type: "GET",
+                       dataType: "text",
+                       success: function(newURL, textStatus, jqXHR) {
+                          if (isRevert) {
+                             window.location.replace(newURL);
+                          } else {
+                             window.location.href = newURL;
+                          }
+                       },
+                       error: function(jqXHR, textStatus, errorThrown) {
+                          $("body").css("cursor","not-allowed");
+                          hasErrored = true;
+                          setTimeout(function() {
+                             $("body").css("cursor","auto")}, 500);
+                       }
+                    });
+                 setTimeout(function() {
+                     if (!hasErrored) {$("body").css("cursor","wait")}
+                 }, 150);
+             })
+            |]
           (here %~ spanClass thisChoice)
                   <$> chooseSlide newPath (disambiguateChoiceName choiceName)
                            "" Nothing Nothing pres
@@ -476,6 +512,28 @@ instance ∀ m . Monoid (IPresentation m ()) where
   mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
+infix 6 →│
+(→│) :: (Sessionable a)
+    => IPresentation m a -> IPresentation m b -> IPresentation m a
+l→│r = fmap (\(GridDivisions [[GridRegion (Just a), GridRegion Nothing]]) -> a)
+       . Encaps GriddedBlocks id
+       $ GridDivisions [GridRegion<$>[ Just<$>l, const Nothing<$>r ]]
+
+infix 6 →│→
+(→│→) :: (Sessionable a)
+    => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
+l→│→r = Feedback $ \aFbq -> l →│ case aFbq of
+                                  Just a -> r a
+                                  othing -> mempty
+
+infix 6 →│←
+(→│←) :: (Sessionable a, Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
+l→│←r = fmap (\(GridDivisions [[GridRegion (Left a), GridRegion (Right b)]])
+                 -> (a,b))
+       . Encaps GriddedBlocks id
+       $ GridDivisions [GridRegion<$>[Left<$>l, Right<$>r]]
+
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
   sappendN _ (Resultless (Encaps GriddedBlocks _ l))
              (Resultless (Encaps GriddedBlocks _ r))
@@ -497,6 +555,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
+outerConstructorName (TweakableInput _ _) = "TweakableInput"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _ _) = "Encaps WithHeading"
@@ -512,6 +571,9 @@ discardResult :: IPresentation m r -> IPresentation m ()
 discardResult (StaticContent c) = StaticContent c
 discardResult (Resultless p) = Resultless p
 discardResult p = Resultless p
+
+feedback_ :: Sessionable a => (Maybe a -> IPresentation m a) -> IPresentation m ()
+feedback_ = discardResult . Feedback
 
 serverSide :: Sessionable a => m a -> IPresentation m a
 serverSide = Interactive (pure ())
@@ -529,7 +591,9 @@ instance Applicative (IPresentation m) where
 instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
+  TweakableInput defV frm >>= f = Dependent (TweakableInput defV frm) f
   Resultless p >>= f = Dependent (Resultless p) f
+  Feedback p >>= f = Dependent (Feedback p) f
   Styling _ (Pure x) >>= f = f x
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
   Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
@@ -604,6 +668,68 @@ tweakContent :: Sessionable r => (Html -> Html) -> IPresentation m r -> IPresent
 tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWitness)
                               $ f . runIdentity) runIdentity
                . Identity
+
+class Sessionable i => Inputtable i where
+  inputElemHtml :: i      -- ^ Current value
+                -> String -- ^ id in the DOM
+                -> Html
+
+instance Inputtable Int where
+  inputElemHtml currentVal hashedId = [hamlet|
+        <input type="number" id="#{hashedId}" value=#{currentVal}>
+       |]()
+
+instance Inputtable Double where
+  inputElemHtml currentVal hashedId = [hamlet|
+        <input type="number" id="#{hashedId}" value=#{currentVal} step="any">
+       |]()
+
+inputBox :: (Inputtable i, JSON.FromJSON i) => i -> IPresentation m i
+inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+      let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
+          inputElId = "input#"++hashedId
+      in ( leafNm
+         , \prevInp ->
+            let currentVal = case prevInp of
+                 Nothing -> iDef
+                 Just v -> v
+            in ( \pPosition -> [julius|
+                 $("#{rawJS inputElId}").click(function(e){
+                     e.stopPropagation();
+                   })
+                 $("#{rawJS inputElId}").change(function(e){
+                     currentVal = $("#{rawJS inputElId}").val()
+                     pChanger =
+                          "@{SetValR pPosition path NoValGiven}".slice(0, -1)
+                                // The slice hack removes the `NoValGiven`, to
+                                // be replaced with the actual value:
+                          + currentVal;
+                     e.stopPropagation();
+                     hasErrored = false;
+                     $.ajax({
+                           contentType: "application/json",
+                           processData: false,
+                           url: pChanger,
+                           type: "GET",
+                           dataType: "text",
+                           success: function(newURL, textStatus, jqXHR) {
+                              window.location.href = newURL;
+                           },
+                           error: function(jqXHR, textStatus, errorThrown) {
+                              $("body").css("cursor","not-allowed");
+                              hasErrored = true;
+                              setTimeout(function() {
+                                 $("body").css("cursor","auto")}, 500);
+                           }
+                        });
+                     setTimeout(function() {
+                         if (!hasErrored) {$("body").css("cursor","wait")}
+                     }, 150);
+                 })
+                      |]
+               , inputElemHtml currentVal hashedId
+               ) )
+ where leafNm = " input"
 
 infixr 6 $<>
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
@@ -757,6 +883,10 @@ includeMediaFile mediaSetup fileExt fileSupp = do
          CustomFile use -> use servableFile
 
 
+getSetValR :: PresProgress -> PrPath -> ValueToSet -> Handler Text
+getSetValR oldPosition path
+    = getChPosR oldPosition . PositionChange path . PositionSetValue
+
 getChPosR :: PresProgress -> PositionChange -> Handler Text
 getChPosR oldPosition posStep = do
    newPosition <- execStateT (changePos_State posStep) oldPosition
@@ -780,6 +910,23 @@ changePos_State (PositionChange path pChangeKind) = do
                            ( Maybe r  -- Key value this branch yields
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
+       go (crumbh,choiceName,crumbp) [] (TweakableInput defV twInp) = do
+          let (pathFin, _) = twInp crumbh
+              fullPath = crumbh<>pathFin
+          case pChangeKind of
+           PositionSetValue (ValueToSet newVal)
+            -> case JSON.fromJSON newVal of
+              JSON.Success v -> do
+               setProgress fullPath v
+               return (Just $ Just v, True)
+              JSON.Error e -> fail e
+           _ -> do
+             key <- lookupProgress fullPath
+             let result = case (key, defV) of
+                  (Just v, _) -> Just v
+                  (_, Just v) -> Just v
+                  (Nothing, Nothing) -> Nothing
+             return $ (Just result, True)
        go _ [] (Pure x) = return $ (Just x, False)
        go _ [] (Interactive _ q)
            = (,error "Don't know if interactive request actually shows something.")
@@ -800,6 +947,7 @@ changePos_State (PositionChange path pChangeKind) = do
        go crumbs [] (Resultless c) = (Just (),) <$> hasDisplayableContent crumbs c
        go crumbs path (Resultless c) = first (const $ Just()) <$> go crumbs path c
        go crumbs path (Interactive p _) = first (const Nothing) <$> go crumbs path p
+       go crumbs path (Feedback p) = go crumbs path $ p Nothing
        go (crumbh, choiceName, crumbp) (('0':prog):path') (Dependent def _)
            = first (const Nothing)
                 <$> go' (crumbh, choiceName, crumbp<>"0") (prog:path') def
@@ -934,7 +1082,7 @@ getResetR = do
 
 
 class (MonadHandler m) => KnowsProgressState m where
-  lookupProgress :: Flat x => PrPath -> m (Maybe x)
+  lookupProgress :: (HasCallStack, Flat x) => PrPath -> m (Maybe x)
 
 instance MonadHandler m
             => KnowsProgressState (StateT PresProgress m) where

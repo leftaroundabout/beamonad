@@ -24,7 +24,7 @@ import Data.Semigroup.Numbered
 import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Flat (Flat)
+import Flat (Flat)
 
 import Data.Ratio ((%))
 
@@ -32,6 +32,7 @@ import Data.List (sortBy)
 import Data.Ord (comparing)
 
 import Control.Applicative (liftA2)
+import Control.Monad.Trans.State
 import Control.Arrow (second)
 
 import Lens.Micro
@@ -80,25 +81,39 @@ data GridLayout a = GridLayout {
 makeLenses ''GridLayout
 
 layoutGrid :: Gridded a -> GridLayout a
--- layoutGrid = fmap snd . fst . layoutGridP
+layoutGrid = fmap snd . fst . layoutGridP
 
 type GridRegionId = Int
 
 layoutGridP :: Gridded a -> ( GridLayout (GridRegionId, a)
                             , [(GridRegionId, b)] -> Gridded b )
-layoutGridP g = ( layoutGrid g & gridContents %~ zipWith (second . (,)) [0..]
-                , const undefined )
-
-layoutGrid (GridRegion a) = GridLayout 1 1 [(GridRange 0 1 0 1, a)]
-layoutGrid (GridDivisions []) = GridLayout 0 0 []
-layoutGrid (GridDivisions [row])
-    = alignLayoutDirectional gridWidth xBegin xEnd
+layoutGridP = (`evalState`0) . go
+ where go (GridRegion a) = do
+         i <- get
+         put $ i+1
+         return ( GridLayout 1 1 [(GridRange 0 1 0 1, (i, a))]
+                , \[(_, b)] -> GridRegion b )
+       go (GridDivisions [[GridRegion a₀, GridRegion a₁]]) = do
+         i <- get
+         put $ i+2
+         return ( GridLayout 2 1 [ (GridRange 0 1 0 1, (i, a₀))
+                                 , (GridRange 1 2 0 1, (i+1, a₁)) ]
+                , \[(_,b₀), (_,b₁)] -> GridDivisions [[GridRegion b₀,GridRegion b₁]] )
+       go (GridDivisions []) 
+        = return ( GridLayout 0 0 []
+                 , \[] -> GridDivisions [] )
+       go (GridDivisions [row]) = do
+         layouts <- mapM go row
+         return ( alignLayoutDirectional gridWidth xBegin xEnd
                              gridHeight yBegin yEnd
-                        $ layoutGrid <$> row
-layoutGrid (GridDivisions rows)
-    = alignLayoutDirectional gridHeight yBegin yEnd
+                             (fst<$>layouts)
+                , undefined )
+       go (GridDivisions rows) = do
+         rLayouts <- mapM (go . GridDivisions . pure) rows
+         return ( alignLayoutDirectional gridHeight yBegin yEnd
                              gridWidth xBegin xEnd
-                        $ layoutGrid . GridDivisions . pure <$> rows
+                        (fst<$>rLayouts)
+                , undefined )
 
 alignLayoutDirectional
     :: Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int

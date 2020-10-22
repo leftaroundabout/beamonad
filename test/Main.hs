@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE TypeApplications  #-}
 
 import Presentation.Yeamer
 import Presentation.Yeamer.Maths
@@ -15,7 +16,7 @@ import Data.Function (fix)
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 
-import Data.Flat (Flat(..))
+import Flat (Flat(..))
 
 import qualified Diagrams.Prelude as Dia
 import qualified Diagrams.Backend.Cairo as Dia
@@ -76,6 +77,13 @@ main = yeamer . styling ([lucius|
     ======
     "Simple test “presentation”"
 
+   "Int boxes"
+    ====== do
+    (const() <$> inputBox @Int 1 →│→ \i -> fromString $ "Value is "<>show i)
+     ──
+     (const() <$> (inputBox 2 →│← inputBox pi) →│→ \(i,j)
+                   -> fromString ("Sum is "<>show (i+j))
+                 )
 
    "Code block"
     ====== [plaintext|
