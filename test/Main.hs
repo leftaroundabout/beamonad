@@ -81,7 +81,7 @@ main = yeamer . styling ([lucius|
     ====== do
     (const() <$> inputBox @Int 1 →│→ \i -> fromString $ "Value is "<>show i)
      ──
-     (const() <$> (inputBox 2 →│← inputBox pi) →│→ \(i,j)
+     (const() <$> (inputBox @Double 2 →│← inputBox pi) →│→ \(i,j)
                    -> fromString ("Sum is "<>show (i+j))
                  )
 
@@ -95,12 +95,18 @@ main = yeamer . styling ([lucius|
    
    "Lazy Haskell structures"
     ====== do
-     display [0::Int .. 16]
-      ──
-      display[ [0..n]
-             | n <- [0::Int .. ] ]
-     display [ RecordTest 1 Alt₀Test
-             , RecordTest 1 (Alt₁Test $ RecordTest 2 ["foo","bar"]) ]
+     "Lists"
+      ====== do
+       display [0::Int .. 16]
+        ──
+        display[ [0..n]
+               | n <- [0::Int .. ] ]
+     "Records"
+      ====== do
+       display [ RecordTest 1 Alt₀Test
+               , RecordTest 1 (Alt₁Test $ RecordTest 2 ["foo","bar"]) ]
+        ──
+        display( RecordTest 9 (Alt₁Test $ RecordTest 37 []) )
 
 
    "Some maths"
