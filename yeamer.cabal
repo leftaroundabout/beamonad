@@ -25,7 +25,7 @@ library
                        Presentation.Yeamer.Internal.Progress
                        Data.Traversable.Redundancy
   -- other-extensions:    
-  build-depends:       base >=4.8 && <4.14
+  build-depends:       base >=4.8 && <4.15
                        , yesod >=1.4 && <1.7
                        , yesod-form
                        , yesod-static
