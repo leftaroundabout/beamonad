@@ -188,8 +188,8 @@ data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
         => Maybe x
-         -> ( PrPath -> ( Text   -- ^ The “final leaf” of the DOM path
-                      , Maybe x -> -- ^ An already stored value
+         -> ( PrPath -> ( Text   -- The “final leaf” of the DOM path
+                      , Maybe x -> -- An already stored value
                          ( PresProgress -> JavascriptUrl (Route PresentationServer)
                          , Html )
                       ))
@@ -734,11 +734,29 @@ inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
  where leafNm = " input"
 
 infixr 6 $<>
+
+-- | Include a mathematical expression inline in the document.
 ($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
            -> IPresentation m r -> IPresentation m r
 ($<>) = (<>) . renderTeXMaths MathML.DisplayInline . TMM.toMathLaTeX
 
+-- | Include a mathematical expression as a “display” in the document, typically used for equations.
+-- 
+--   Example:
+-- 
+--   @
+--     "The constant "<>π$<>" fulfills "
+--       <>maths [[ sin π⩵0 ]]"."
+--   @
+-- 
+--   The maths expressions use TeX-my-maths syntax ("Math.LaTeX.Prelude").
+--   Note that TeX-my-maths has different syntax flavours (e.g. @𝑎×𝑒◝γ@ vs. @a * exp gamma@).
+--   Both can be used with '$<>' and 'maths', but the downside is type ambiguity
+--   in expressions that include no symbols at all (e.g. single numbers), which can lead to
+--   @Could not deduce ‘SymbolClass σ’@ compiler errors. To avoid this problem, you
+--   can add local type signatures or use the "Presentation.Yeamer.Maths.Unicode.MathLatin_RomanGreek"
+--   module.
 maths :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
         => [[TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)]]
           -> String -> IPresentation m r
