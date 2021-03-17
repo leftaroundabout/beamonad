@@ -62,6 +62,8 @@ module Presentation.Yeamer ( Presentation
                            , YeamerServerConfig
                            -- | Default port is 14910
                            , yeamerTcpPort
+                           -- * Internals
+                           , IPresentation
                            ) where
 
 import Yesod hiding (get)

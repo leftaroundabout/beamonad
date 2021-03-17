@@ -19,6 +19,7 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Presentation.Yeamer
                        Presentation.Yeamer.Maths
+                       Presentation.Yeamer.Maths.Unicode.MathLatin_RomanGreek
                        Presentation.Yeamer.Internal.Grid
   other-modules:       Control.Monad.Trans.Writer.JSONable
                        Presentation.Yeamer.Internal.PrPathStepCompression
