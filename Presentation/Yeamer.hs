@@ -95,7 +95,7 @@ import qualified Data.Vector as Arr
 import Presentation.Yeamer.Internal.Grid
 
 import Text.Cassius (cassius, Css)
-import Text.Julius (rawJS, Javascript)
+import Text.Julius (rawJS, Javascript, renderJavascript)
 
 import Yesod.Static (Static, static, base64md5)
 import Yesod.EmbeddedStatic
@@ -712,10 +712,16 @@ tweakContent f = Encaps (CustomEncapsulation (EncapsulableWitness SessionableWit
                               $ f . runIdentity) runIdentity
                . Identity
 
+type JSCode url0 = (url0 -> [(Text,Text)] -> Text) -> Javascript
+
 class Sessionable i => Inputtable i where
   inputElemHtml :: i      -- ^ Current value
                 -> String -- ^ id in the DOM
                 -> Html
+  inputElemJSRead :: String   -- ^ id in the DOM
+                  -> Javascript -- ^ Expression that reads out the value
+  inputElemJSRead inputElId
+      = [julius| $("#{rawJS inputElId}").val() |](\_ _ -> mempty)
 
 instance Inputtable Int where
   inputElemHtml currentVal hashedId = [hamlet|
@@ -727,7 +733,14 @@ instance Inputtable Double where
         <input type="number" id="#{hashedId}" value=#{currentVal} step="any">
        |]()
 
-inputBox :: (Inputtable i, JSON.FromJSON i) => i -> IPresentation m i
+instance Inputtable String where
+  inputElemHtml currentVal hashedId = [hamlet|
+        <input type="string" id="#{hashedId}" value=#{currentVal}>
+       |]()
+  inputElemJSRead inputElId
+      = [julius| JSON.stringify($("#{rawJS inputElId}").val()) |](\_ _ -> mempty)
+
+inputBox :: ∀ i m . (Inputtable i, JSON.FromJSON i) => i -> IPresentation m i
 inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
       let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
           inputElId = "input#"++hashedId
@@ -736,12 +749,13 @@ inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
             let currentVal = case prevInp of
                  Nothing -> iDef
                  Just v -> v
+                valueReader = rawJS . renderJavascript $ inputElemJSRead @i inputElId
             in ( \pPosition -> [julius|
                  $("#{rawJS inputElId}").click(function(e){
                      e.stopPropagation();
                    })
                  $("#{rawJS inputElId}").change(function(e){
-                     currentVal = $("#{rawJS inputElId}").val()
+                     currentVal = #{valueReader}
                      pChanger =
                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
                                 // The slice hack removes the `NoValGiven`, to
