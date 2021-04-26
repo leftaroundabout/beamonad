@@ -255,7 +255,7 @@ preprocPres (Encaps GriddedBlocks ff p)
            = Styling grids
            . fmap ff
            . divClass gridClass
-           . Encaps ManualCSSClasses (backonstruct . map (first (read . Txt.unpack . _hchunkCSSClass) . swap)
+           . Encaps ManualCSSClasses (fst . backonstruct . map (first (read . Txt.unpack . _hchunkCSSClass) . swap)
                       . runWriterT)
            $ preprocPres <$> layouted
  where (GridLayout w h prelayed, backonstruct) = layoutGridP p

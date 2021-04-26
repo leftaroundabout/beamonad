@@ -86,41 +86,43 @@ layoutGrid = fmap snd . fst . layoutGridP
 type GridRegionId = Int
 
 layoutGridP :: Gridded a -> ( GridLayout (GridRegionId, a)
-                            , [(GridRegionId, b)] -> Gridded b )
+                            , [(GridRegionId, b)] -> (Gridded b, [(GridRegionId, b)]) )
 layoutGridP = (`evalState`0) . go
  where go (GridRegion a) = do
          i <- get
          put $ i+1
          return ( GridLayout 1 1 [(GridRange 0 1 0 1, (i, a))]
-                , \[(_, b)] -> GridRegion b )
+                , \((_, b):lgrs) -> (GridRegion b, lgrs) )
        go (GridDivisions [[GridRegion a₀, GridRegion a₁]]) = do  -- HACK, special-case only
          i <- get
          put $ i+2
          return ( GridLayout 2 1 [ (GridRange 0 1 0 1, (i, a₀))
                                  , (GridRange 1 2 0 1, (i+1, a₁)) ]
-                , \[(_,b₀), (_,b₁)] -> GridDivisions [[GridRegion b₀,GridRegion b₁]] )
-       go (GridDivisions [[GridRegion a₀], [GridRegion a₁]]) = do  -- HACK, special-case only
-         i <- get
-         put $ i+2
-         return ( GridLayout 2 1 [ (GridRange 0 1 0 1, (i, a₀))
-                                 , (GridRange 0 1 1 2, (i+1, a₁)) ]
-                , \[(_,b₀), (_,b₁)]
-                      -> GridDivisions [[GridRegion b₀],[GridRegion b₁]] )
+                , \((_,b₀):(_,b₁):lgrs)
+                     -> (GridDivisions [[GridRegion b₀,GridRegion b₁]], lgrs) )
        go (GridDivisions []) 
         = return ( GridLayout 0 0 []
-                 , \[] -> GridDivisions [] )
+                 , \lgrs -> (GridDivisions [], lgrs) )
        go (GridDivisions [row]) = do
          layouts <- mapM go row
          return ( alignLayoutDirectional gridWidth xBegin xEnd
                              gridHeight yBegin yEnd
                              (fst<$>layouts)
-                , undefined )
+                , let procLgrs [] acc lgrs = (GridDivisions [acc []], lgrs)
+                      procLgrs (srow:srows) acc lgrs
+                         = let (srowRes, lgrs') = srow lgrs
+                           in procLgrs srows (acc . (srowRes:)) lgrs'
+                  in procLgrs (snd<$>layouts) id )
        go (GridDivisions rows) = do
          rLayouts <- mapM (go . GridDivisions . pure) rows
          return ( alignLayoutDirectional gridHeight yBegin yEnd
                              gridWidth xBegin xEnd
                         (fst<$>rLayouts)
-                , undefined )
+                , let procLgrs [] acc lgrs = (GridDivisions $ acc [], lgrs)
+                      procLgrs (srow:srows) acc lgrs
+                         = let (GridDivisions [srowRes], lgrs') = srow lgrs
+                           in procLgrs srows (acc . (srowRes:)) lgrs'
+                  in procLgrs (snd<$>rLayouts) id  )
 
 alignLayoutDirectional
     :: Lens' (GridLayout a) Int -> Lens' GridRange Int -> Lens' GridRange Int
