@@ -93,12 +93,19 @@ layoutGridP = (`evalState`0) . go
          put $ i+1
          return ( GridLayout 1 1 [(GridRange 0 1 0 1, (i, a))]
                 , \[(_, b)] -> GridRegion b )
-       go (GridDivisions [[GridRegion a₀, GridRegion a₁]]) = do
+       go (GridDivisions [[GridRegion a₀, GridRegion a₁]]) = do  -- HACK, special-case only
          i <- get
          put $ i+2
          return ( GridLayout 2 1 [ (GridRange 0 1 0 1, (i, a₀))
                                  , (GridRange 1 2 0 1, (i+1, a₁)) ]
                 , \[(_,b₀), (_,b₁)] -> GridDivisions [[GridRegion b₀,GridRegion b₁]] )
+       go (GridDivisions [[GridRegion a₀], [GridRegion a₁]]) = do  -- HACK, special-case only
+         i <- get
+         put $ i+2
+         return ( GridLayout 2 1 [ (GridRange 0 1 0 1, (i, a₀))
+                                 , (GridRange 0 1 1 2, (i+1, a₁)) ]
+                , \[(_,b₀), (_,b₁)]
+                      -> GridDivisions [[GridRegion b₀],[GridRegion b₁]] )
        go (GridDivisions []) 
         = return ( GridLayout 0 0 []
                  , \[] -> GridDivisions [] )

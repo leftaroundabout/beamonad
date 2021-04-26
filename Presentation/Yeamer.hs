@@ -52,9 +52,14 @@ module Presentation.Yeamer ( Presentation
                            , addHeading, (======), discardResult
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
-                           , (→│←)
                            , (→│)
+                           , (↘──)
+                           , (│←)
+                           , (──↖)
+                           , (→│←)
+                           , (↘──↖)
                            , (→│→)
+                           , (↘──↘)
                            -- * CSS
                            , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration
@@ -521,10 +526,38 @@ l→│r = fmap (\(GridDivisions [[GridRegion (Just a), GridRegion Nothing]]) ->
        . Encaps GriddedBlocks id
        $ GridDivisions [GridRegion<$>[ Just<$>l, const Nothing<$>r ]]
 
+infix 5 ↘──
+(↘──) :: (Sessionable a)
+    => IPresentation m a -> IPresentation m b -> IPresentation m a
+l↘──r = fmap (\(GridDivisions [[GridRegion (Just a)], [GridRegion Nothing]]) -> a)
+       . Encaps GriddedBlocks id
+       $ GridDivisions [[GridRegion $ Just<$>l], [GridRegion $ const Nothing<$>r]]
+
+infix 6 │←
+(│←) :: (Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m b
+l│←r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]]) -> b)
+       . Encaps GriddedBlocks id
+       $ GridDivisions [GridRegion<$>[ const Nothing<$>l, Just<$>r ]]
+
+infix 5 ──↖
+(──↖) :: (Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m b
+l──↖r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]]) -> b)
+       . Encaps GriddedBlocks id
+       $ GridDivisions [[GridRegion $ const Nothing<$>l], [GridRegion $ Just<$>r]]
+
 infix 6 →│→
 (→│→) :: (Sessionable a)
     => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
 l→│→r = Feedback $ \aFbq -> l →│ case aFbq of
+                                  Just a -> r a
+                                  othing -> mempty
+
+infix 5 ↘──↘
+(↘──↘) :: (Sessionable a)
+    => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
+l↘──↘r = Feedback $ \aFbq -> l ↘── case aFbq of
                                   Just a -> r a
                                   othing -> mempty
 
@@ -535,6 +568,14 @@ l→│←r = fmap (\(GridDivisions [[GridRegion (Left a), GridRegion (Right b)]
                  -> (a,b))
        . Encaps GriddedBlocks id
        $ GridDivisions [GridRegion<$>[Left<$>l, Right<$>r]]
+
+infix 5 ↘──↖
+(↘──↖) :: (Sessionable a, Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
+l↘──↖r = fmap (\(GridDivisions [[GridRegion (Left a)], [GridRegion (Right b)]])
+                 -> (a,b))
+       . Encaps GriddedBlocks id
+       $ GridDivisions [[GridRegion $ Left<$>l], [GridRegion $ Right<$>r]]
 
 instance ∀ m . SemigroupNo 0 (IPresentation m ()) where
   sappendN _ (Resultless (Encaps GriddedBlocks _ l))
