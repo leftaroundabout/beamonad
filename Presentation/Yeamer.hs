@@ -47,7 +47,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Haskell values
                            , InteractiveShow(..)
                            -- ** Interactive parameters
-                           , inputBox, feedback_
+                           , inputBox, dropdownSelect, feedback_
                            -- * Structure / composition
                            , addHeading, (======), discardResult
                            , module Data.Monoid
@@ -787,6 +787,67 @@ inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
                , inputElemHtml currentVal hashedId
                ) )
  where leafNm = " input"
+
+dropdownSelect :: ∀ a m . (a -> String) -> [a] -> Int -> IPresentation m a
+dropdownSelect valShow options iDef
+  | iDef>=0 && iDef<length options
+      = fmap ((options!!) . maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+       let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
+           selectElId = "select#"++hashedId
+       in ( leafNm
+          , \prevInp ->
+             let currentIndex = case prevInp of
+                  Nothing -> iDef
+                  Just i -> i
+             in ( \pPosition -> [julius|
+                  $("#{rawJS selectElId}").click(function(e){
+                      e.stopPropagation();
+                    })
+                  $("#{rawJS selectElId}").change(function(e){
+                      currentVal = $("#{rawJS selectElId}").val()
+                      pChanger =
+                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
+                                 // The slice hack removes the `NoValGiven`, to
+                                 // be replaced with the actual value:
+                           + currentVal;
+                      e.stopPropagation();
+                      hasErrored = false;
+                      $.ajax({
+                            contentType: "application/json",
+                            processData: false,
+                            url: pChanger,
+                            type: "GET",
+                            dataType: "text",
+                            success: function(newURL, textStatus, jqXHR) {
+                               window.location.href = newURL;
+                            },
+                            error: function(jqXHR, textStatus, errorThrown) {
+                               $("body").css("cursor","not-allowed");
+                               hasErrored = true;
+                               setTimeout(function() {
+                                  $("body").css("cursor","auto")}, 500);
+                            }
+                         });
+                      setTimeout(function() {
+                          if (!hasErrored) {$("body").css("cursor","wait")}
+                      }, 150);
+                  })
+                       |]
+                , let ixedOptions = zip [0..] $ valShow<$>options
+                      isCurrentIndex = (==currentIndex)
+                  in [hamlet|
+                      <select id="#{hashedId}">
+                        $forall (i, optionStr) <- ixedOptions
+                           $if isCurrentIndex i
+                              <option value="#{i}" selected>
+                                 #{optionStr}
+                           $else
+                              <option value="#{i}">
+                                 #{optionStr}
+                      |]()
+                ) )
+  | otherwise  = error "Default selection for dropdown not included in options list."
+ where leafNm = " select"
 
 infixr 6 $<>
 

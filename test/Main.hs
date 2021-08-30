@@ -85,6 +85,14 @@ main = yeamer . styling ([lucius|
                    -> fromString ("Sum is "<>show (i+j))
                  )
 
+   "Dropdown selectors"
+    ====== do
+    (const() <$> dropdownSelect @Int show [1,3,9] 0
+       →│→ \i -> fromString $ "Value is "<>show i)
+     ──
+     (const() <$> dropdownSelect @String id ["bla","bli","blub"] 2
+       →│→ \s -> fromString $ "You say “"<>s<>"”")
+
    "Code block"
     ====== [plaintext|
        bla
