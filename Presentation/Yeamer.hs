@@ -618,6 +618,9 @@ discardResult p = Resultless p
 feedback_ :: Sessionable a => (Maybe a -> IPresentation m a) -> IPresentation m ()
 feedback_ = discardResult . Feedback
 
+-- | Run a monadic action and use the result in the presentation.
+--   Note that the action may not be re-run even if it depends to other
+--   values chosen at another point in the presentation, so use with care.
 serverSide :: Sessionable a => m a -> IPresentation m a
 serverSide = Interactive (pure ())
 
