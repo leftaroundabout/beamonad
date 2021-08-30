@@ -191,6 +191,7 @@ makeLenses ''HTMChunkK
 
 data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
+   DynamicContent :: m Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
         => Maybe x
          -> ( PrPath -> ( Text   -- The “final leaf” of the DOM path
@@ -244,6 +245,7 @@ instance YesodJquery PresentationServer
 
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
+preprocPres (DynamicContent c) = DynamicContent c
 preprocPres (TweakableInput defV frm) = TweakableInput defV frm
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
@@ -299,6 +301,7 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
+isInline (DynamicContent _) = True
 isInline (TweakableInput _ _) = False
 isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
@@ -325,7 +328,7 @@ getExactPositionR pPosition = do
       slideChoice <- (`runReaderT`pPosition)
             $ chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
       (`here`slideChoice) $ \slide -> do
-          let contents = go 0 slide
+          contents <- liftIO $ go 0 slide
           toWidget contents
       return ()
  where chooseSlide :: PrPath -> (Text->PrPath) -> Text -> Maybe PrPath -> Maybe PrPath
@@ -334,6 +337,8 @@ getExactPositionR pPosition = do
                             (WidgetT PresentationServer IO) (These Presentation r)
        chooseSlide _ _ "" Nothing Nothing (StaticContent conts)
            = pure $ These (StaticContent conts) ()
+       chooseSlide _ _ "" Nothing Nothing (DynamicContent conts)
+           = pure $ These (DynamicContent conts) ()
        chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput defV frm) = do
            let (leafNm, interactor) = frm path
                fullPath = path<>leafNm
@@ -447,8 +452,9 @@ getExactPositionR pPosition = do
        chooseSlide _ _ _ _ _ (Pure x) = pure $ That x
        chooseSlide _ _ _ _ _ pres
           = error $ "Cannot display "++outerConstructorName pres
-       go :: Int -> IPresentation m r -> Html
-       go _ (StaticContent conts) = conts
+       go :: Monad m => Int -> IPresentation m r -> m Html
+       go _ (StaticContent conts) = pure conts
+       go _ (DynamicContent conts) = conts
        go _ (Pure _) = error $ "Error: impossible to render a slide of an empty presentation."
        go _ (Dependent _ _) = error $ "Internal error: un-selected Dependent option while rendering to HTML."
        go lvl (Deterministic _ conts) = go lvl conts
@@ -474,7 +480,8 @@ getExactPositionR pPosition = do
                | Just _ <- Txt.stripPrefix "autogrid_" c
                             = "autogrid "<>c
                | otherwise  = c
-       go lvl (Encaps (CustomEncapsulation (EncapsulableWitness _) f) _ conts) = f $ go lvl <$> conts
+       go lvl (Encaps (CustomEncapsulation (EncapsulableWitness _) f) _ conts)
+             = fmap f . forM conts $ go lvl
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
@@ -487,8 +494,11 @@ hchunkFor :: Text -> IPresentation m r -> HTMChunkK
 hchunkFor t p | isInline p  = HTMSpan t
               | otherwise   = HTMDiv t
 
-instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
+instance (Monad m, Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
   StaticContent c <> StaticContent d = StaticContent $ c<>d
+  DynamicContent c <> DynamicContent d = DynamicContent $ liftA2 (<>) c d
+  StaticContent c <> DynamicContent d = DynamicContent $ (c<>)<$>d
+  DynamicContent c <> StaticContent d = DynamicContent $ (<>d)<$>c
   Encaps ManualCSSClasses ff₀ (WriterT elems₀) <> Encaps ManualCSSClasses ff₁ (WriterT elems₁)
      = Encaps ManualCSSClasses ff' . WriterT . disambiguate
            $ map (first $ fmap Left) elems₀ ++ map (first $ fmap Right) elems₁
@@ -514,7 +524,7 @@ instance (Monoid r, Sessionable r) => SG.Semigroup (IPresentation m r) where
       = Resultless (Encaps ManualCSSClasses id $ WriterT [(c,hchunkFor""c)]) <> Resultless p
   p <> q = Encaps ManualCSSClasses fold $ WriterT
              [(p, hchunkFor"anonymousCell-0"p), (q, hchunkFor"anonymousCell-1"q)]
-instance ∀ m . Monoid (IPresentation m ()) where
+instance ∀ m . Monad m => Monoid (IPresentation m ()) where
   mappend = (SG.<>)
   mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
@@ -548,18 +558,18 @@ l──↖r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]])
        $ GridDivisions [[GridRegion $ const Nothing<$>l], [GridRegion $ Just<$>r]]
 
 infix 6 →│→
-(→│→) :: (Sessionable a)
+(→│→) :: (Sessionable a, Monad m)
     => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
 l→│→r = Feedback $ \aFbq -> l →│ case aFbq of
                                   Just a -> r a
-                                  othing -> mempty
+                                  Nothing -> mempty
 
 infix 5 ↘──↘
-(↘──↘) :: (Sessionable a)
+(↘──↘) :: (Sessionable a, Monad m)
     => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
 l↘──↘r = Feedback $ \aFbq -> l ↘── case aFbq of
                                   Just a -> r a
-                                  othing -> mempty
+                                  Nothing -> mempty
 
 infix 6 →│←
 (→│←) :: (Sessionable a, Sessionable b)
@@ -598,6 +608,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
+outerConstructorName (DynamicContent _) = "DynamicContent"
 outerConstructorName (TweakableInput _ _) = "TweakableInput"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
@@ -612,6 +623,7 @@ outerConstructorName (Dependent _ _) = "Dependent"
 
 discardResult :: IPresentation m r -> IPresentation m ()
 discardResult (StaticContent c) = StaticContent c
+discardResult (DynamicContent c) = DynamicContent c
 discardResult (Resultless p) = Resultless p
 discardResult p = Resultless p
 
@@ -637,11 +649,13 @@ instance Applicative (IPresentation m) where
 instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = Dependent (StaticContent c) f
+  DynamicContent c >>= f = Dependent (DynamicContent c) f
   TweakableInput defV frm >>= f = Dependent (TweakableInput defV frm) f
   Resultless p >>= f = Dependent (Resultless p) f
   Feedback p >>= f = Dependent (Feedback p) f
   Styling _ (Pure x) >>= f = f x
   Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
+  Styling s (DynamicContent c) >>= f = Dependent (Styling s (DynamicContent c)) f
   Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
   Styling s (Styling s' x) >>= f = Styling (s++s') x >>= f
   Styling s (Encaps (WithHeading h) ff x) >>= f
@@ -855,7 +869,7 @@ dropdownSelect valShow options iDef
 infixr 6 $<>
 
 -- | Include a mathematical expression inline in the document.
-($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX)
+($<>) :: (r ~ (), TMM.SymbolClass σ, TMM.SCConstraint σ LaTeX, Monad m)
          => TMM.CAS (TMM.Infix LaTeX) (TMM.Encapsulation LaTeX) (TMM.SymbolD σ LaTeX)
            -> IPresentation m r -> IPresentation m r
 ($<>) = (<>) . renderTeXMaths MathML.DisplayInline . TMM.toMathLaTeX
@@ -934,9 +948,11 @@ plaintext = verbatimWithin 'HTM.pre
        
 -- | Display an image generated on-the-fly in the server. The image will be
 --   stored temporarily, in a content-indexed fashion.
-imageFromFileSupplier :: String               -- ^ File extension
-                      -> (FilePath -> IO ())  -- ^ File-writer function
-                      -> IPresentation IO ()
+imageFromFileSupplier
+   :: String               -- ^ File extension
+   -> (FilePath -> IO ())  -- ^ File-writer function. This will be called every time
+                           --   a slide with the image is requested.
+   -> IPresentation IO ()
 imageFromFileSupplier ext = includeMediaFile SimpleImage ext . Left
 
 -- | Display an image that lies on the server as any ordinary static file.
@@ -980,7 +996,7 @@ useFileSupplier ext supplier use = includeMediaFile (CustomFile use) ext $ Left 
 
 includeMediaFile :: FileUsageSetup -> FilePath
              -> Either (FilePath -> IO ()) FilePath -> IPresentation IO ()
-includeMediaFile mediaSetup fileExt fileSupp = do
+includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
    let prepareServing file hashLen completeHash = do
          let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
@@ -1004,10 +1020,9 @@ includeMediaFile mediaSetup fileExt fileSupp = do
             else makeThisLink
    imgCode <- case fileSupp of
        Right file
-          -> serverSide . prepareServing file 4 . base64md5 . BSL.fromStrict . BC8.pack
+          -> prepareServing file 4 . base64md5 . BSL.fromStrict . BC8.pack
                  $ show file
-       Left supplier
-          -> serverSide $ do
+       Left supplier -> do
                tmpFile <- emptyTempFile pStatDir fileExt
                supplier tmpFile
                longHash <- base64md5 <$> BSL.readFile tmpFile
@@ -1016,7 +1031,7 @@ includeMediaFile mediaSetup fileExt fileSupp = do
                prepareServing file 4 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
    let servableFile = "/pseudostatic"</>imgCode<.>fileExt
-    in StaticContent $ case mediaSetup of
+   return $ case mediaSetup of
          SimpleImage -> [hamlet| <img src=#{servableFile}> |]()
          SimpleVideo -> [hamlet| <video src=#{servableFile} controls> |]()
          CustomFile use -> use servableFile
@@ -1049,6 +1064,7 @@ changePos_State (PositionChange path pChangeKind) = do
                            ( Maybe r  -- Key value this branch yields
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
+       go _ [] (DynamicContent _) = return $ (Just (), True)
        go (crumbh,choiceName,crumbp) [] (TweakableInput defV twInp) = do
           let (pathFin, _) = twInp crumbh
               fullPath = crumbh<>pathFin
@@ -1175,6 +1191,7 @@ changePos_State (PositionChange path pChangeKind) = do
        skipContentless crumbs (Deterministic f c)
            = fmap f <$> skipContentless crumbs c
        skipContentless _ (StaticContent _) = return Nothing
+       skipContentless _ (DynamicContent _) = return Nothing
        skipContentless _ (Encaps _ _ _) = return Nothing
        skipContentless _ p = error
         $ "`skipContentless` does not support "++outerConstructorName p
@@ -1197,6 +1214,7 @@ changePos_State (PositionChange path pChangeKind) = do
        hasDisplayableContent crumbs (Deterministic f c)
            = hasDisplayableContent crumbs c
        hasDisplayableContent _ (StaticContent _) = return True
+       hasDisplayableContent _ (DynamicContent _) = return True
        hasDisplayableContent _ (Encaps _ _ _) = return True
        hasDisplayableContent _ p = error
         $ "`hasDisplayableContent` does not support "++outerConstructorName p
