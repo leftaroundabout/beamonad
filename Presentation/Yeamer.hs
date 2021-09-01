@@ -142,7 +142,8 @@ import Data.Default.Class
 
 import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtension
                        , (<.>), (</>) )
-import System.Directory ( doesPathExist, makeAbsolute
+import System.IO.Error (catchIOError, isAlreadyExistsError)
+import System.Directory ( doesPathExist, makeAbsolute, removeFile
                         , createDirectoryIfMissing, renameFile
 #if MIN_VERSION_directory(1,3,1)
                         , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget
@@ -1014,13 +1015,20 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
                 then do
                   existingTgt <- getSymbolicLinkTarget linkPath
                   if existingTgt/=absOrig
-                   then disambiguate
+                   then error $ "Hash collision for path `"<>linkPath<>"` between files `"<>existingTgt<>"` and `"<>absOrig<>"`"
                    else return codedName
-                else disambiguate
-            else makeThisLink
+                else error $ "A non-link file in occupies the needed path `"<>linkPath<>"`"
+            else do
+              catchIOError makeThisLink $ \e -> do
+                 if isAlreadyExistsError e
+                  then do
+                   removeFile linkPath -- must have been a dead link anyway, else it
+                   makeThisLink        -- would have already triggered `doesPathExist`.
+                  else
+                   error $ "Unknown problem when creating link `"<>linkPath<>"`"
    imgCode <- case fileSupp of
        Right file
-          -> prepareServing file 4 . base64md5 . BSL.fromStrict . BC8.pack
+          -> prepareServing file 10 . base64md5 . BSL.fromStrict . BC8.pack
                  $ show file
        Left supplier -> do
                tmpFile <- emptyTempFile pStatDir fileExt
@@ -1028,7 +1036,7 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
                longHash <- base64md5 <$> BSL.readFile tmpFile
                let file = pStatDir</>longHash<.>fileExt
                renameFile tmpFile file
-               prepareServing file 4 (base64md5 . BSL.fromStrict $ BC8.pack file)
+               prepareServing file 10 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
    let servableFile = "/pseudostatic"</>imgCode<.>fileExt
    return $ case mediaSetup of
