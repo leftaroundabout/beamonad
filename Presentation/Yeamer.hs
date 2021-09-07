@@ -392,7 +392,7 @@ getExactPositionR pPosition = do
           positionCh <- lookupProgress progPath
           case positionCh of
             Nothing -> do
-              liftIO . putStrLn $ "Not enter '"++Txt.unpack progPath++"'"
+              -- liftIO . putStrLn $ "Not enter '"++Txt.unpack progPath++"'"
               purity <- chooseSlide path choiceName (pdiv<>"0") bwd (Just progPath) def
               case preferThis purity of
                  Left pres -> pure . This $ discardResult pres
