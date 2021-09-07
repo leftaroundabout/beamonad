@@ -143,7 +143,7 @@ import Data.Default.Class
 import System.FilePath ( takeFileName, takeExtension, takeBaseName, dropExtension
                        , (<.>), (</>) )
 import System.IO.Error (catchIOError, isAlreadyExistsError)
-import System.Directory ( doesPathExist, makeAbsolute, removeFile
+import System.Directory ( doesPathExist, canonicalizePath, removeFile
                         , createDirectoryIfMissing, renameFile
 #if MIN_VERSION_directory(1,3,1)
                         , createFileLink, pathIsSymbolicLink, getSymbolicLinkTarget
@@ -1001,10 +1001,9 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
    let prepareServing file hashLen completeHash = do
          let linkPath = pStatDir</>take hashLen completeHash<.>takeExtension file
          isOccupied <- doesPathExist linkPath
-         absOrig <- makeAbsolute file
          let codedName = takeBaseName linkPath
              makeThisLink = do
-               createFileLink absOrig linkPath
+               createFileLink file linkPath
                return codedName
              disambiguate
               | hashLen < length linkPath  = prepareServing file (hashLen+1) completeHash
@@ -1014,8 +1013,8 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
               if isSymlk
                 then do
                   existingTgt <- getSymbolicLinkTarget linkPath
-                  if existingTgt/=absOrig
-                   then error $ "Hash collision for path `"<>linkPath<>"` between files `"<>existingTgt<>"` and `"<>absOrig<>"`"
+                  if existingTgt/=file
+                   then error $ "Hash collision for path `"<>linkPath<>"` between files `"<>existingTgt<>"` and `"<>file<>"`"
                    else return codedName
                 else error $ "A non-link file in occupies the needed path `"<>linkPath<>"`"
             else do
@@ -1027,9 +1026,10 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
                   else
                    error $ "Unknown problem when creating link `"<>linkPath<>"`"
    imgCode <- case fileSupp of
-       Right file
-          -> prepareServing file 10 . base64md5 . BSL.fromStrict . BC8.pack
-                 $ show file
+       Right file -> do
+         absOrig <- canonicalizePath file
+         prepareServing absOrig 10 . base64md5 . BSL.fromStrict . BC8.pack
+                 $ show absOrig
        Left supplier -> do
                tmpFile <- emptyTempFile pStatDir fileExt
                supplier tmpFile
