@@ -123,6 +123,7 @@ import Control.Monad.Trans.Writer.JSONable
 import Control.Monad.Trans.List
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
+import Control.Monad.Catch (MonadThrow(..), Exception(..))
 import Data.These
 import Data.These.Lens
 import Data.Either (partitionEithers)
@@ -134,6 +135,8 @@ import Data.Functor.Identity
 import Control.Monad
 import Control.Arrow (first, second, (&&&))
 import Control.Applicative
+
+import Data.Typeable(Typeable)
 
 import Data.Function ((&))
 import Data.Tuple (swap)
@@ -1054,6 +1057,10 @@ getChPosR oldPosition posStep = do
    newPosition <- execStateT (changePos_State posStep) oldPosition
    toTextUrl $ ExactPositionR newPosition
 
+newtype PositionStateJSONError = PositionStateJSONError String
+ deriving (Show, Typeable)
+instance Exception PositionStateJSONError
+
 changePos_State :: PositionChange -> StateT PresProgress Handler ()
 changePos_State (PositionChange path pChangeKind) = do
     PresentationServer presentation _ _ <- getYesod
@@ -1082,7 +1089,7 @@ changePos_State (PositionChange path pChangeKind) = do
               JSON.Success v -> do
                setProgress fullPath v
                return (Just $ Just v, True)
-              JSON.Error e -> fail e
+              JSON.Error e -> throwM $ PositionStateJSONError e
            _ -> do
              key <- lookupProgress fullPath
              let result = case (key, defV) of

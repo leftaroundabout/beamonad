@@ -37,6 +37,7 @@ library
                        , data-default-class
                        , numbered-semigroups >=0.1 && <0.2
                        , transformers
+                       , exceptions >=0.10 && <0.13
                        , TeX-my-math >=0.201.0.0 && < 0.203
                        , dumb-cas
                        , HaTeX
