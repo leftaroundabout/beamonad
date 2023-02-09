@@ -20,6 +20,7 @@
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE EmptyCase              #-}
 {-# LANGUAGE UnicodeSyntax          #-}
@@ -197,7 +198,7 @@ data IPresentation m r where
    StaticContent :: Html -> IPresentation m ()
    DynamicContent :: m Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
-        => Maybe x
+        => Maybe x  -- Default value as the cell's output
          -> ( PrPath -> ( Text   -- The “final leaf” of the DOM path
                       , Maybe x -> -- An already stored value
                          ( PresProgress -> JavascriptUrl (Route PresentationServer)
@@ -210,13 +211,14 @@ data IPresentation m r where
                => Container t -> (t r -> rf)
                    -> t (IPresentation m r) -> IPresentation m rf
    Pure :: r -> IPresentation m r
-   Deterministic :: (r -> s) -> IPresentation m r -> IPresentation m s
+   Deterministic :: (r -> Maybe s) -> IPresentation m r -> IPresentation m s
    Interactive :: Sessionable r
           => IPresentation m () -> m r -> IPresentation m r
    Feedback :: Sessionable r
            => (Maybe r -> IPresentation m r) -> IPresentation m r
    Dependent :: Sessionable x
-                   => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
+                   => IPresentation m x -> (x -> IPresentation m r)
+                         -> IPresentation m (Either x r)
 instance (r ~ ()) => IsString (IPresentation m r) where
   fromString = StaticContent . fromString
 
@@ -387,9 +389,20 @@ getExactPositionR pPosition = do
            case purity ^? here of
              Just pres -> pure . (`These`()) $ discardResult pres
              Nothing   -> pure $ That ()
-       chooseSlide path choiceName "" Nothing Nothing (Deterministic f conts) = do
-           purity <- chooseSlide path choiceName "" Nothing Nothing conts
-           pure $ bimap discardResult f purity
+       chooseSlide path choiceName "" Nothing Nothing (Deterministic f conts)
+         = chooseSlide path choiceName "" Nothing Nothing conts
+            <&> \case
+              This pres -> This pres
+              That res -> case f res of
+                Just q -> That q
+                -- The `Nothing` case should not be possible here, because 
+                -- `Deterministic` cannot be directly accessed by the user, and can
+                -- only yield `Nothing` is part of `oRDependent`, which guarantees
+                -- that there is content. (Not entirely sure about all this, TODO
+                -- making it rigorous.)
+              These pres res -> case f res of
+                Just q -> These pres q
+                Nothing -> This pres
        chooseSlide path choiceName pdiv bwd fwd (Dependent def opt) = do
           let progPath = path<>" span."<>choiceName pdiv
           positionCh <- lookupProgress progPath
@@ -397,12 +410,15 @@ getExactPositionR pPosition = do
             Nothing -> do
               -- liftIO . putStrLn $ "Not enter '"++Txt.unpack progPath++"'"
               purity <- chooseSlide path choiceName (pdiv<>"0") bwd (Just progPath) def
-              case preferThis purity of
-                 Left pres -> pure . This $ discardResult pres
-                 Right x -> do
+              case purity of
+                 This pres -> pure . This $ discardResult pres
+                 That x -> do
                    pPosition' <- setProgress progPath x `execStateT` pPosition
                    redirect $ ExactPositionR pPosition'
-            Just x -> chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd $ opt x
+                 These pres x -> pure . These (discardResult pres) $ Left x
+            Just x -> fmap (fmap Right)
+                    . chooseSlide path choiceName (pdiv<>"1") (Just progPath) fwd
+                    $ opt x
        chooseSlide path choiceName pdiv bwd fwd pres
         | isJust bwd || isJust fwd  = do
           let thisChoice = choiceName pdiv
@@ -641,36 +657,46 @@ serverSide :: Sessionable a => m a -> IPresentation m a
 serverSide = Interactive (pure ())
 
 instance Functor (IPresentation m) where
-  fmap f (Deterministic g q) = Deterministic (f . g) q
+  fmap f (Deterministic g q) = Deterministic (fmap f . g) q
   fmap f (Pure x) = Pure $ f x
-  fmap f q = Deterministic f q
+  fmap f q = Deterministic (Just . f) q
 instance Applicative (IPresentation m) where
   pure = Pure
   Pure f <*> x = fmap f x
   f <*> Pure x = fmap ($ x) f
   fs<*>xs = ap fs xs
 
+onlyRight :: IPresentation m (Either a b) -> IPresentation m b
+onlyRight = Deterministic $ \case
+    Left _ -> Nothing
+    Right y -> Just y
+
+oRDependent :: Flat x
+    => IPresentation m x -> (x -> IPresentation m r) -> IPresentation m r
+oRDependent a b = onlyRight $ Dependent a b
+
 instance ∀ m . Monad (IPresentation m) where
   return = pure
-  StaticContent c >>= f = Dependent (StaticContent c) f
-  DynamicContent c >>= f = Dependent (DynamicContent c) f
-  TweakableInput defV frm >>= f = Dependent (TweakableInput defV frm) f
-  Resultless p >>= f = Dependent (Resultless p) f
-  Feedback p >>= f = Dependent (Feedback p) f
+  StaticContent c >>= f = oRDependent (StaticContent c) f
+  DynamicContent c >>= f = oRDependent (DynamicContent c) f
+  TweakableInput defV frm >>= f = oRDependent (TweakableInput defV frm) f
+  Resultless p >>= f = oRDependent (Resultless p) f
+  Feedback p >>= f = oRDependent (Feedback p) f
   Styling _ (Pure x) >>= f = f x
-  Styling s (StaticContent c) >>= f = Dependent (Styling s (StaticContent c)) f
-  Styling s (DynamicContent c) >>= f = Dependent (Styling s (DynamicContent c)) f
-  Styling s (Resultless c) >>= f = Dependent (Styling s (Resultless c)) f
+  Styling s (StaticContent c) >>= f = oRDependent (Styling s (StaticContent c)) f
+  Styling s (DynamicContent c) >>= f = oRDependent (Styling s (DynamicContent c)) f
+  Styling s (Resultless c) >>= f = oRDependent (Styling s (Resultless c)) f
   Styling s (Styling s' x) >>= f = Styling (s++s') x >>= f
   Styling s (Encaps (WithHeading h) ff x) >>= f
-      = Dependent (Styling s (Encaps (WithHeading h) ff x)) f
+      = oRDependent (Styling s (Encaps (WithHeading h) ff x)) f
   Styling s (Encaps ManualCSSClasses ff x) >>= f
-      = Dependent (Styling s (Encaps ManualCSSClasses ff x)) f
-  Styling s (Deterministic g x) >>= f = Styling s x >>= f . g
-  Styling s (Interactive p o) >>= f = Dependent (Interactive (Styling s p) o) f
-  Styling s (Dependent p g) >>= f = Dependent (Styling s p) $ Styling s . g >=> f
-  Encaps (WithHeading h) ff p >>= f = Dependent (Encaps (WithHeading h) ff p) f
-  Encaps ManualCSSClasses ff ps >>= f = Dependent (Encaps ManualCSSClasses ff ps) f
+      = oRDependent (Styling s (Encaps ManualCSSClasses ff x)) f
+  Styling s (Deterministic g x) >>= f = Deterministic g (Styling s x) >>= f
+  Styling s (Interactive p o) >>= f = oRDependent (Interactive (Styling s p) o) f
+  Styling s (Dependent p g) >>= f
+      = oRDependent (Styling s p) $ \x -> Styling s (g x) >>= f . Right
+  Encaps (WithHeading h) ff p >>= f = oRDependent (Encaps (WithHeading h) ff p) f
+  Encaps ManualCSSClasses ff ps >>= f = oRDependent (Encaps ManualCSSClasses ff ps) f
   Encaps (CustomEncapsulation (EncapsulableWitness w') e') ff' ps' >>= f'
       = bindCustEncaps w' e' ff' ps' f'
    where bindCustEncaps :: ∀ a b t r tr
@@ -684,11 +710,14 @@ instance ∀ m . Monad (IPresentation m) where
          bindCustEncaps w e ff ps f
           = case w :: SessionableWitness (t r) of
              SessionableWitness
-               -> Dependent (Encaps (CustomEncapsulation (EncapsulableWitness w) e) ff ps) f
+               -> oRDependent (Encaps (CustomEncapsulation (EncapsulableWitness w) e) ff ps) f
   Pure x >>= f = f x
-  Deterministic g p >>= f = p >>= f . g
-  Interactive p q >>= f = Dependent (Interactive p q) f
-  Dependent p g >>= f = Dependent p $ g >=> f
+  Deterministic g p >>= f = onlyRight $
+           p >>= \x -> case g x of
+                Just y -> Right <$> f y
+                Nothing -> Left <$> p
+  Interactive p q >>= f = oRDependent (Interactive p q) f
+  Dependent p g >>= f = oRDependent p $ g >=> f . Right
   o >> Interactive (Pure _) q = Interactive (discardResult o) q
   o >> Pure x = fmap (const x) o
   o >> n = o >>= const n
@@ -1113,7 +1142,7 @@ changePos_State (PositionChange path pChangeKind) = do
                                               HTMSpan i -> " span."<>i
                                              , choiceName, crumbp) [] c)
                 conts
-       go crumbs path (Deterministic f c) = first (fmap f) <$> go crumbs path c
+       go crumbs path (Deterministic f c) = first (f=<<) <$> go crumbs path c
        go crumbs [] (Resultless c) = (Just (),) <$> hasDisplayableContent crumbs c
        go crumbs path (Resultless c) = first (const $ Just()) <$> go crumbs path c
        go crumbs path (Interactive p _) = first (const Nothing) <$> go crumbs path p
@@ -1130,10 +1159,11 @@ changePos_State (PositionChange path pChangeKind) = do
               if pChangeKind==PositionRevert && not rHasContent then do
                  revertProgress $ crumbh <> " span."<>choiceName crumbp
                  return (Nothing, False)
-               else return (resKey, rHasContent)
+               else return (Right<$>resKey, rHasContent)
             (Nothing, ('1':prog):path'', _) -> do
               (~(Just k), _) <- go' (crumbh, choiceName, crumbp<>"0") [] def
-              go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
+              fmap (first $ fmap Right)
+                . go' (crumbh, choiceName, crumbp<>"1") (prog:path'') $ opt k
             (_, [[]], PositionAdvance) -> do
               (key', _) <- go' (crumbh,choiceName,crumbp<>"0") [[]] def
               case key' of
@@ -1148,7 +1178,8 @@ changePos_State (PositionChange path pChangeKind) = do
                     <- hasDisplayableContent (crumbh, choiceName, crumbp<>"0") def
               return (Nothing, lHasContent)
             (Just k, [], PositionAdvance)
-             -> go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
+             -> fmap (first $ fmap Right)
+                 . go' (crumbh, choiceName, crumbp<>"1") [] $ opt k
             (Nothing, [], PositionAdvance)
              -> return (Nothing, False)
             (_, dir:_, _)
@@ -1192,19 +1223,21 @@ changePos_State (PositionChange path pChangeKind) = do
           let thisDecision = crumbh <> " span."<>choiceName crumbp
           key <- lookupProgress thisDecision
           case key of
-            Just k -> skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
+            Just k -> fmap (fmap Right)
+                       . skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k
             Nothing -> do
                key' <- skipContentless (crumbh, choiceName, crumbp<>"0") def
                case key' of
                  Just k' -> do
                    setProgress thisDecision k'
-                   skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
+                   fmap (fmap Right)
+                    . skipContentless (crumbh, choiceName, crumbp<>"1") $ opt k'
                  Nothing -> return Nothing
        skipContentless crumbs (Styling _ c) = skipContentless crumbs c
        skipContentless crumbs (Resultless c)
            = fmap (const ()) <$> skipContentless crumbs c
        skipContentless crumbs (Deterministic f c)
-           = fmap f <$> skipContentless crumbs c
+           = (f=<<) <$> skipContentless crumbs c
        skipContentless _ (StaticContent _) = return Nothing
        skipContentless _ (DynamicContent _) = return Nothing
        skipContentless _ (Encaps _ _ _) = return Nothing
