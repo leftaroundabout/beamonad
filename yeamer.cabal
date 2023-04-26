@@ -78,7 +78,7 @@ executable test-presentation
                        , semigroups
                        , numbered-semigroups
                        , time
-                       , diagrams-lib, diagrams-cairo
+                       , diagrams-lib, diagrams-gi-cairo
                        , flat
   hs-source-dirs:      test
   ghc-options:         -rtsopts "-with-rtsopts=-M2G"
@@ -94,7 +94,7 @@ executable yeamer-demo
                        , TeX-my-math
                        , semigroups
                        , numbered-semigroups
-                       , diagrams-lib, diagrams-cairo
+                       , diagrams-lib, diagrams-gi-cairo
   hs-source-dirs:      demo
   ghc-options:         -rtsopts "-with-rtsopts=-M2G"
   default-language:    Haskell2010
