@@ -38,7 +38,7 @@ library
                        , numbered-semigroups >=0.1 && <0.2
                        , transformers
                        , exceptions >=0.10 && <0.13
-                       , TeX-my-math >=0.201.0.0 && < 0.203
+                       , TeX-my-math >=0.201.0.0 && <0.204
                        , dumb-cas
                        , HaTeX
                        , texmath >=0.9 && <0.13
