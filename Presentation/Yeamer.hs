@@ -1066,8 +1066,8 @@ includeMediaFile mediaSetup fileExt fileSupp = DynamicContent $ do
                tmpFile <- emptyTempFile pStatDir fileExt
                supplier tmpFile
                longHash <- base64md5 <$> BSL.readFile tmpFile
-               let file = pStatDir</>longHash<.>fileExt
-               renameFile tmpFile file
+               let file = longHash<.>fileExt
+               renameFile tmpFile (pStatDir</>file)
                prepareServing file 10 (base64md5 . BSL.fromStrict $ BC8.pack file)
                
    let servableFile = "/pseudostatic"</>imgCode<.>fileExt
