@@ -126,8 +126,9 @@ instance (Arbitrary a) => Arbitrary (Gridded a) where
            return . GridDivisions $ if emptyDir then [] else [[]]
          arbGrid [v] = return $ GridRegion v
          arbGrid values = GridDivisions <$> do
-           [width,height] <- replicateM 2
-                    $ (+1) . (`mod`maxSize) . QC.getNonNegative <$> arbitrary
+           let arbSize = (+1) . (`mod`maxSize) . QC.getNonNegative <$> arbitrary
+           width <- arbSize
+           height <- arbSize
            let portionSize = fromIntegral n / fromIntegral (width*height)
                portions = splitPortns portionSize 0 0 values
                rows = splitEach width portions
