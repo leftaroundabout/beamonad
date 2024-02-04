@@ -55,7 +55,7 @@ module Presentation.Yeamer ( Presentation
                            , module Data.Semigroup.Numbered
                            , (→│)
                            , (↘──)
-                           , (│←)
+                           , (│←), (<>←)
                            , (──↖)
                            , (→│←)
                            , (↘──↖)
@@ -186,6 +186,9 @@ data Container t where
   ManualCSSClasses :: Container (WriterT HTMChunkK [])
   GriddedBlocks :: Container Gridded
   CustomEncapsulation :: EncapsulableWitness t -> (t Html -> Html) -> Container t
+
+simpleConcat :: Container []
+simpleConcat = CustomEncapsulation (EncapsulableWitness SessionableWitness) mconcat
 
 data HTMChunkK = HTMDiv {_hchunkCSSClass::Text} | HTMSpan {_hchunkCSSClass::Text}
           deriving (Generic, Eq, Ord)
@@ -569,6 +572,13 @@ infix 6 │←
 l│←r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]]) -> b)
        . Encaps GriddedBlocks id
        $ GridDivisions [GridRegion<$>[ const Nothing<$>l, Just<$>r ]]
+
+infix 6 <>←
+(<>←) :: (Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m b
+l<>←r = fmap (\[Nothing, (Just b)] -> b)
+       . Encaps simpleConcat id
+       $ [ const Nothing<$>l, Just<$>r ]
 
 infix 5 ──↖
 (──↖) :: (Sessionable b)
