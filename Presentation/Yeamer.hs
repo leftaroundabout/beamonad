@@ -611,6 +611,16 @@ l↘──↘r = Feedback $ \aFbq -> l ↘── case aFbq of
                                   Just a -> r a
                                   Nothing -> mempty
 
+-- -- This should in principle work, but doesn't because inline subexpressions share
+-- -- the same path in the Yeamer model and would thus not get separate ids we could
+-- -- handle for each of the values:
+-- infix 6 →<>←
+-- (→<>←) :: (Sessionable a, Sessionable b)
+--     => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
+-- l→<>←r = fmap (\[Left a, Right b] -> (a,b))
+--        . Encaps simpleConcat id
+--        $ [Left<$>l, Right<$>r]
+
 infix 6 →│←
 (→│←) :: (Sessionable a, Sessionable b)
     => IPresentation m a -> IPresentation m b -> IPresentation m (a,b)
