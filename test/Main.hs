@@ -77,12 +77,13 @@ main = yeamer . styling ([lucius|
     ======
     "Simple test “presentation”"
 
-   "Int boxes"
+   "Input boxes"
     ====== do
-    (const() <$> inputBox @Int 1 →│→ \i -> fromString $ "Value is "<>show i)
+    (const() <$> ("If you select the value "<>←inputBox @Int 1→<>",")
+                    →<>→ \i -> fromString $ "then the value is "<>show i)
      ──
-     (const() <$> (inputBox @Double 2 →│← inputBox pi) →│→ \(i,j)
-                   -> fromString ("Sum is "<>show (i+j))
+     (const() <$> (inputBox @Double 2 →│← inputBox pi) →│→ \(x,y)
+                   -> fromString ("Sum is "<>show (x+y))
                  )
 
    "Dropdown selectors"

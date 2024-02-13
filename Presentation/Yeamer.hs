@@ -53,14 +53,10 @@ module Presentation.Yeamer ( Presentation
                            , addHeading, (======), discardResult
                            , module Data.Monoid
                            , module Data.Semigroup.Numbered
-                           , (→│)
-                           , (↘──)
-                           , (│←), (<>←)
-                           , (──↖)
-                           , (→│←)
-                           , (↘──↖)
-                           , (→│→)
-                           , (↘──↘)
+                           , (→<>), (→│), (↘──)
+                           , (<>←), (│←), (──↖)
+                           , (→│←), (↘──↖)
+                           , (→<>→), (→│→), (↘──↘)
                            -- * CSS
                            , divClass, divClasses, spanClass, (#%), styling, Css
                            -- * Server configuration
@@ -552,6 +548,13 @@ instance ∀ m . Monad m => Monoid (IPresentation m ()) where
   mempty = Resultless $ Encaps ManualCSSClasses id
                 (WriterT [] :: WriterT HTMChunkK [] (IPresentation m ()))
 
+infixr 6 →<>
+(→<>) :: (Sessionable a)
+    => IPresentation m a -> IPresentation m b -> IPresentation m a
+l→<>r = fmap (\[Just a, Nothing] -> a)
+       . Encaps simpleConcat id
+       $ [ Just<$>l, const Nothing<$>r ]
+
 infix 6 →│
 (→│) :: (Sessionable a)
     => IPresentation m a -> IPresentation m b -> IPresentation m a
@@ -566,6 +569,13 @@ l↘──r = fmap (\(GridDivisions [[GridRegion (Just a)], [GridRegion Nothing]
        . Encaps GriddedBlocks id
        $ GridDivisions [[GridRegion $ Just<$>l], [GridRegion $ const Nothing<$>r]]
 
+infixr 6 <>←
+(<>←) :: (Sessionable b)
+    => IPresentation m a -> IPresentation m b -> IPresentation m b
+l<>←r = fmap (\[Nothing, (Just b)] -> b)
+       . Encaps simpleConcat id
+       $ [ const Nothing<$>l, Just<$>r ]
+
 infix 6 │←
 (│←) :: (Sessionable b)
     => IPresentation m a -> IPresentation m b -> IPresentation m b
@@ -573,19 +583,19 @@ l│←r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]]) ->
        . Encaps GriddedBlocks id
        $ GridDivisions [GridRegion<$>[ const Nothing<$>l, Just<$>r ]]
 
-infix 6 <>←
-(<>←) :: (Sessionable b)
-    => IPresentation m a -> IPresentation m b -> IPresentation m b
-l<>←r = fmap (\[Nothing, (Just b)] -> b)
-       . Encaps simpleConcat id
-       $ [ const Nothing<$>l, Just<$>r ]
-
 infix 5 ──↖
 (──↖) :: (Sessionable b)
     => IPresentation m a -> IPresentation m b -> IPresentation m b
 l──↖r = fmap (\(GridDivisions [[GridRegion Nothing, GridRegion (Just b)]]) -> b)
        . Encaps GriddedBlocks id
        $ GridDivisions [[GridRegion $ const Nothing<$>l], [GridRegion $ Just<$>r]]
+
+infix 6 →<>→
+(→<>→) :: (Sessionable a, Monad m)
+    => IPresentation m a -> (a -> IPresentation m ()) -> IPresentation m a
+l→<>→r = Feedback $ \aFbq -> l →<> case aFbq of
+                                  Just a -> r a
+                                  Nothing -> mempty
 
 infix 6 →│→
 (→│→) :: (Sessionable a, Monad m)
