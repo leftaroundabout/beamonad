@@ -330,6 +330,14 @@ getExactPositionR pPosition = do
    PresentationServer presentation _ _ <- getYesod
    defaultLayout $ do
       addScript $ StaticR jquery_js
+      
+      -- Define some CSS variables that can be used as a workaround for the inability of
+      -- CSS `calc` to give ratios of sizes back as dimensionless quantities.
+      toWidget [julius|
+          document.documentElement.style.setProperty('--vw-pixels', window.innerWidth)
+          document.documentElement.style.setProperty('--vh-pixels', window.innerHeight)
+        |]
+
       slideChoice <- (`runReaderT`pPosition)
             $ chooseSlide "" defaultChoiceName "" Nothing Nothing presentation
       (`here`slideChoice) $ \slide -> do
