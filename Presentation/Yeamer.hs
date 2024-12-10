@@ -7,30 +7,33 @@
 -- Stability   : experimental
 -- Portability : portable
 -- 
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE DefaultSignatures      #-}
-{-# LANGUAGE EmptyCase              #-}
-{-# LANGUAGE UnicodeSyntax          #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE ViewPatterns           #-}
-{-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE DefaultSignatures          #-}
+{-# LANGUAGE EmptyCase                  #-}
+{-# LANGUAGE UnicodeSyntax              #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 
 module Presentation.Yeamer ( Presentation
                            -- * Running a presentation
@@ -50,9 +53,15 @@ module Presentation.Yeamer ( Presentation
                            -- ** Interactive parameters
                            , inputBox, dropdownSelect, feedback_
                            -- * Structure / composition
-                           , addHeading, (======), discardResult
+                           -- ** Headings
+                           , addHeading, (======)
+                           -- ** In-line composition
                            , module Data.Monoid
+                           -- ** Horizontal and vertical composition
                            , module Data.Semigroup.Numbered
+                           , table
+                           -- ** Interactive value selection
+                           , discardResult
                            , (→<>), (→│), (↘──)
                            , (<>←), (│←), (──↖)
                            , (→│←), (↘──↖)
@@ -1519,3 +1528,26 @@ dispConstructorLabel = divClass "yeamer-display-dataConstructorName"
 dispRecFieldLabel :: ∀ n . KnownSymbol n => Presentation
 dispRecFieldLabel = divClass "yeamer-display-recordFieldLabel"
                       $ fromString (symbolVal @n Proxy ++ "=")
+
+
+newtype TableContents c = TableContents
+  { getTableContents :: [[c]] }
+ deriving (Functor, Traversable, Foldable, Flat)
+
+table :: [IPresentation m ()]   -- ^ Headers
+      -> [[IPresentation m ()]] -- ^ Cells
+      -> IPresentation m ()
+table headers cells = Encaps
+   (CustomEncapsulation (EncapsulableWitness SessionableWitness)
+     $ \(TableContents (h:cs)) -> HTM.table . HTM.tbody
+          $ (case h of
+              [] -> mempty
+              hcs -> HTM.thead $ foldMap HTM.th hcs)
+           <> HTM.tbody (
+               foldMap (\row
+                 -> HTM.tr $ foldMap HTM.td row
+                 ) cs )
+     )
+   (const ())
+   . TableContents $ headers : cells
+
