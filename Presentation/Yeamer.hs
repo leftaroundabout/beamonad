@@ -512,11 +512,6 @@ getExactPositionR pPosition = do
        go _ p = error $ outerConstructorName p <> " cannot be rendered."
 
 
-preferThis :: These a b -> Either a b
-preferThis (This a) = Left a
-preferThis (That b) = Right b
-preferThis (These a _) = Left a
-
 hchunkFor :: Text -> IPresentation m r -> HTMChunkK
 hchunkFor t p | isInline p  = HTMSpan t
               | otherwise   = HTMDiv t
