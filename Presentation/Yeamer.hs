@@ -51,7 +51,7 @@ module Presentation.Yeamer ( Presentation
                            -- ** Haskell values
                            , InteractiveShow(..)
                            -- ** Interactive parameters
-                           , inputBox, dropdownSelect, feedback_
+                           , inputBox, dropdownSelect, triggerButton, feedback_
                            -- * Structure / composition
                            -- ** Headings
                            , addHeading, (======)
@@ -945,6 +945,52 @@ dropdownSelect valShow options iDef
                 ) )
   | otherwise  = error "Default selection for dropdown not included in options list."
  where leafNm = " select"
+
+triggerButton :: ∀ m . String -> m () -> IPresentation m ()
+triggerButton label action = fmap (const ())
+    . TweakableInput (Just (0::Int)) (const action)
+     $ \path -> 
+       let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
+           selectElId = "button#"++hashedId
+       in ( leafNm
+          , \prevInp ->
+                ( \pPosition -> [julius|
+                  $("#{rawJS selectElId}").click(function(e){
+                      e.stopPropagation();
+                      currentVal = 0
+                      pChanger =
+                           "@{SetValR pPosition path NoValGiven}".slice(0, -1)
+                                 // The slice hack removes the `NoValGiven`, to
+                                 // be replaced with the actual value:
+                           + currentVal;
+                      hasErrored = false;
+                      $.ajax({
+                            contentType: "application/json",
+                            processData: false,
+                            url: pChanger,
+                            type: "GET",
+                            dataType: "text",
+                            success: function(newURL, textStatus, jqXHR) {
+                               window.location.href = newURL;
+                            },
+                            error: function(jqXHR, textStatus, errorThrown) {
+                               $("body").css("cursor","not-allowed");
+                               hasErrored = true;
+                               setTimeout(function() {
+                                  $("body").css("cursor","auto")}, 500);
+                            }
+                         });
+                      setTimeout(function() {
+                          if (!hasErrored) {$("body").css("cursor","wait")}
+                      }, 150);
+                  })
+                       |]
+                , [hamlet|
+                      <button type="button" id="#{hashedId}">
+                        #{label}
+                      |]()
+                ) )
+ where leafNm = " button"
 
 infixr 6 $<>
 
