@@ -208,10 +208,10 @@ data IPresentation m r where
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
         => Maybe x  -- Default value as the cell's output
          -> ( PrPath -> ( Text   -- The “final leaf” of the DOM path
-                      , Maybe x -> -- An already stored value
-                         ( PresProgress -> JavascriptUrl (Route PresentationServer)
-                         , Html )
-                      ))
+                        , Maybe x -> -- An already stored value
+                           ( PresProgress -> JavascriptUrl (Route PresentationServer)
+                           , Html )
+                        ))
                           -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
