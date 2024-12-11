@@ -1185,7 +1185,10 @@ changePos_State (PositionChange path pChangeKind) = do
                                              , choiceName, crumbp) [] c)
                 conts
        go crumbs path (Deterministic f c) = first (f=<<) <$> go crumbs path c
-       go crumbs [] (Resultless c) = (Just (),) <$> hasDisplayableContent crumbs c
+       go crumbs [] (Resultless c) = case pChangeKind of
+         PositionSetValue _ -> first (fmap $ const ()) <$> go crumbs [] c
+         -- TODO check if the second branch actually needs special handling
+         _ -> (Just (),) <$> hasDisplayableContent crumbs c
        go crumbs path (Resultless c) = first (const $ Just()) <$> go crumbs path c
        go crumbs path (Interactive p _) = first (const Nothing) <$> go crumbs path p
        go crumbs path (Feedback p) = go crumbs path $ p Nothing
