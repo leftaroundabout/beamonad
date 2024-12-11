@@ -196,7 +196,7 @@ simpleConcat :: Container []
 simpleConcat = CustomEncapsulation (EncapsulableWitness SessionableWitness) mconcat
 
 data HTMChunkK = HTMDiv {_hchunkCSSClass::Text} | HTMSpan {_hchunkCSSClass::Text}
-          deriving (Generic, Eq, Ord)
+          deriving (Generic, Eq, Ord, Show)
 instance JSON.FromJSON HTMChunkK
 instance JSON.ToJSON HTMChunkK
 instance Flat HTMChunkK
@@ -1233,8 +1233,10 @@ changePos_State (PositionChange path pChangeKind) = do
        go (crumbh, choiceName, _) (divid:path) (Encaps ManualCSSClasses ff (WriterT conts))
          | Just dividt <-  HTMDiv<$>Txt.stripPrefix "div." (Txt.pack divid)
                        <|> HTMSpan<$>Txt.stripPrefix "span." (Txt.pack divid)
-         , Just subSel <- lookup dividt $ swap<$>conts
-              = first (fmap $ ff . WriterT . pure . (,dividt))
+            = let subSel = case lookup dividt $ swap<$>conts of
+                   Just ssl -> ssl
+                   _ -> error $ "Cannot lookup "++show dividt++" in "++show (snd<$>conts)
+              in first (fmap $ ff . WriterT . pure . (,dividt))
                   <$> go (crumbh<>case dividt of
                                  HTMDiv i -> " div."<>i
                                  HTMSpan i -> " span."<>i
