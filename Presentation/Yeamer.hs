@@ -207,12 +207,13 @@ data IPresentation m r where
    DynamicContent :: m Html -> IPresentation m ()
    TweakableInput :: (Sessionable x, JSON.FromJSON x)
         => Maybe x  -- Default value as the cell's output
+         -> (x -> m ()) -- Action to run after each update
          -> ( PrPath -> ( Text   -- The “final leaf” of the DOM path
                         , Maybe x -> -- An already stored value
                            ( PresProgress -> JavascriptUrl (Route PresentationServer)
                            , Html )
                         ))
-                          -> IPresentation m (Maybe x)
+         -> IPresentation m (Maybe x)
    Resultless :: IPresentation m r -> IPresentation m ()
    Styling :: [Css] -> IPresentation m r -> IPresentation m r
    Encaps :: (Traversable t, Sessionable r, Sessionable rf, Sessionable (t ()))
@@ -260,7 +261,7 @@ instance YesodJquery PresentationServer
 preprocPres :: IPresentation m r -> IPresentation m r
 preprocPres (StaticContent c) = StaticContent c
 preprocPres (DynamicContent c) = DynamicContent c
-preprocPres (TweakableInput defV frm) = TweakableInput defV frm
+preprocPres (TweakableInput defV postAct frm) = TweakableInput defV postAct frm
 preprocPres (Resultless p) = Resultless $ preprocPres p
 preprocPres (Styling s p) = Styling s $ preprocPres p
 preprocPres (Encaps (WithHeading h) ff p) = Encaps (WithHeading h) ff $ preprocPres<$>p
@@ -316,7 +317,7 @@ preprocPres (Dependent d o) = Dependent (preprocPres d) (preprocPres<$>o)
 isInline :: IPresentation m a -> Bool
 isInline (StaticContent _) = True
 isInline (DynamicContent _) = True
-isInline (TweakableInput _ _) = False
+isInline (TweakableInput _ _ _) = False
 isInline (Encaps ManualCSSClasses _ (WriterT qs)) = all (\(_,i) -> case i of
                    HTMSpan _ -> True
                    HTMDiv _ -> False ) qs
@@ -361,7 +362,7 @@ getExactPositionR pPosition = do
            = pure $ These (StaticContent conts) ()
        chooseSlide _ _ "" Nothing Nothing (DynamicContent conts)
            = pure $ These (DynamicContent conts) ()
-       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput defV frm) = do
+       chooseSlide path choiceName pdiv Nothing Nothing (TweakableInput defV _ frm) = do
            let (leafNm, interactor) = frm path
                fullPath = path<>leafNm
            storedValue <- lookupProgress fullPath
@@ -671,7 +672,7 @@ instance ∀ m . SemigroupNo 1 (IPresentation m ()) where
 outerConstructorName :: IPresentation m r -> String
 outerConstructorName (StaticContent _) = "StaticContent"
 outerConstructorName (DynamicContent _) = "DynamicContent"
-outerConstructorName (TweakableInput _ _) = "TweakableInput"
+outerConstructorName (TweakableInput _ _ _) = "TweakableInput"
 outerConstructorName (Resultless _) = "Resultless"
 outerConstructorName (Styling _ _) = "Styling"
 outerConstructorName (Encaps (WithHeading _) _ _) = "Encaps WithHeading"
@@ -721,7 +722,7 @@ instance ∀ m . Monad (IPresentation m) where
   return = pure
   StaticContent c >>= f = oRDependent (StaticContent c) f
   DynamicContent c >>= f = oRDependent (DynamicContent c) f
-  TweakableInput defV frm >>= f = oRDependent (TweakableInput defV frm) f
+  TweakableInput defV postAct frm >>= f = oRDependent (TweakableInput defV postAct frm) f
   Resultless p >>= f = oRDependent (Resultless p) f
   Feedback p >>= f = oRDependent (Feedback p) f
   Styling _ (Pure x) >>= f = f x
@@ -832,8 +833,10 @@ instance Inputtable String where
   inputElemJSRead inputElId
       = [julius| JSON.stringify($("#{rawJS inputElId}").val()) |](\_ _ -> mempty)
 
-inputBox :: ∀ i m . (Inputtable i, JSON.FromJSON i) => i -> IPresentation m i
-inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+inputBox :: ∀ i m . (Inputtable i, JSON.FromJSON i, Applicative m)
+                => i -> IPresentation m i
+inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) (const $ pure ())
+  $ \path ->
       let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
           inputElId = "input#"++hashedId
       in ( leafNm
@@ -880,10 +883,12 @@ inputBox iDef = fmap (maybe iDef id) . TweakableInput (Just iDef) $ \path ->
                ) )
  where leafNm = " input"
 
-dropdownSelect :: ∀ a m . (a -> String) -> [a] -> Int -> IPresentation m a
+dropdownSelect :: ∀ a m . Applicative m
+          => (a -> String) -> [a] -> Int -> IPresentation m a
 dropdownSelect valShow options iDef
   | iDef>=0 && iDef<length options
-      = fmap ((options!!) . maybe iDef id) . TweakableInput (Just iDef) $ \path ->
+      = fmap ((options!!) . maybe iDef id) . TweakableInput (Just iDef) (const $ pure ())
+     $ \path ->
        let hashedId = base64md5 . BSL.fromStrict $ Txt.encodeUtf8 path
            selectElId = "select#"++hashedId
        in ( leafNm
@@ -1159,6 +1164,7 @@ changePos_State (PositionChange path pChangeKind) = do
             -> case JSON.fromJSON newVal of
               JSON.Success v -> do
                setProgress fullPath v
+               liftIO $ postAct v
                return (Just $ Just v, True)
               JSON.Error e -> throwM $ PositionStateJSONError e
            _ -> do
