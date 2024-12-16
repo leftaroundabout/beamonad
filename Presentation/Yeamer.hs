@@ -1202,7 +1202,7 @@ changePos_State (PositionChange path pChangeKind) = do
                            , Bool )   -- Whether it contains displayable content
        go _ [] (StaticContent _) = return $ (Just (), True)
        go _ [] (DynamicContent _) = return $ (Just (), True)
-       go (crumbh,choiceName,crumbp) [] (TweakableInput defV twInp) = do
+       go (crumbh,choiceName,crumbp) [] (TweakableInput defV postAct twInp) = do
           let (pathFin, _) = twInp crumbh
               fullPath = crumbh<>pathFin
           case pChangeKind of
