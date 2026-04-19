@@ -8,6 +8,10 @@
 -- Portability : portable
 -- 
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE CPP                        #-}
 module Presentation.Yeamer.Internal.Progress where
 
 
@@ -31,7 +35,7 @@ import Yesod (PathPiece(..))
 
 import Control.Arrow ((>>>), (<<<))
 import Control.Monad ((>=>))
-import Control.Monad.Trans.List
+import Control.Applicative.Trans.List (ListT(..))
 import Control.Monad.Trans.Writer
 import Lens.Micro (_Right)
 import Lens.Micro.Extras (preview)
@@ -39,6 +43,11 @@ import Lens.Micro.Extras (preview)
 import Data.Traversable.Redundancy (rmRedundancy)
 
 import GHC.Generics
+
+#if !MIN_VERSION_free_listt(0,1,1)
+deriving instance Traversable m => Traversable (ListT m)
+deriving instance Foldable m => Foldable (ListT m)
+#endif
 
 
 type PrPath = Text

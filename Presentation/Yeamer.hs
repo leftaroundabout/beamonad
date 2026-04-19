@@ -126,7 +126,7 @@ import Data.List (intercalate)
 import Data.Foldable (fold)
 import Data.Traversable.Redundancy (rmRedundancy)
 import Control.Monad.Trans.Writer.JSONable
-import Control.Monad.Trans.List
+import Control.Applicative.Trans.List
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
 import Control.Monad.Catch (MonadThrow(..), Exception(..))
